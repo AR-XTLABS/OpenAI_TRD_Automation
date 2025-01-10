@@ -32,6 +32,7 @@ os.environ["OPENAI_API_KEY"] = "YOUR_OPENAI_API_KEY_HERE"
 INPUT_FOLDER = "input_excel"       # Folder where .xls or .xlsx files are read
 OUTPUT_FOLDER = "outputs"          # Folder to store final output Excel
 TEMP_IMAGES_DIR = "temp_images"    # Base directory for storing reference subfolders
+PDF_FOLDER = ""
 MAX_WORKERS = 4                    # Number of parallel threads (rows processed in parallel)
 # ------------------------------------------------
 
@@ -186,17 +187,21 @@ def insert_processing_result(
         ))
         conn.commit()
 
-def convert_pdf_to_images(pdf_path, referenceid, base_temp_dir=TEMP_IMAGES_DIR):
+
+def convert_pdf_to_images(pdf_path, referenceid, base_temp_dir=TEMP_IMAGES_DIR, pdf_location=PDF_FOLDER):
+    
     """
     Convert a PDF to images with preprocessing for better OCR accuracy.
     Images are saved in a unique subdirectory under base_temp_dir, named with 'referenceid'.
     """
+    
     # Create a subfolder for this reference ID
     unique_temp_dir = os.path.join(base_temp_dir, str(referenceid))
+    pdf_folder_path = os.path.join(pdf_location, pdf_path)
     os.makedirs(unique_temp_dir, exist_ok=True)
 
     try:
-        images = convert_from_path(pdf_path, dpi=350)
+        images = convert_from_path(pdf_folder_path, dpi=350)
         image_paths = []
 
         for i, image in enumerate(images):
@@ -251,15 +256,7 @@ def cleanup_temp_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR
         return
 
     try:
-        # Delete each .png file
-        for file_name in os.listdir(ref_folder):
-            if file_name.lower().endswith(".png"):
-                file_path = os.path.join(ref_folder, file_name)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                    print(f"Deleted file: {file_path}")
 
-        # Attempt to remove the subfolder (will only succeed if empty)
         os.rmdir(ref_folder)
         print(f"Removed folder: {ref_folder}")
 
