@@ -420,27 +420,44 @@ def process_single_row(row, tracking_id):
         print(f"Error processing row for reference {row.get('referencenumber', 'N/A')}: {e}")
         return None
 
-
-# --------------------- MAIN FUNCTION ---------------------
 def main():
     # 1) Ensure tables exist
     create_tables()
 
-    # 2) List all Excel files in INPUT_FOLDER
+    # 2) Fetch list of already tracked Excel files from tbl_excel_tracking
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT excel_name FROM tbl_excel_tracking")
+            tracked_files = [row.excel_name for row in cursor.fetchall()]
+        print(f"Tracked Excel files: {tracked_files}")
+    except Exception as e:
+        print(f"Error fetching tracked Excel files: {e}")
+        tracked_files = []
+
+    # 3) List all Excel files in INPUT_FOLDER
     if not os.path.exists(INPUT_FOLDER):
         print(f"Input folder '{INPUT_FOLDER}' does not exist. Please create it and add Excel files.")
         return
 
-    excel_files = [f for f in os.listdir(INPUT_FOLDER) if f.endswith(('.xls', '.xlsx'))]
-    if not excel_files:
+    all_excel_files = [f for f in os.listdir(INPUT_FOLDER) if f.endswith(('.xls', '.xlsx'))]
+    if not all_excel_files:
         print(f"No Excel files found in '{INPUT_FOLDER}'. Exiting.")
         return
 
-    for excel_file in excel_files:
-        # 3) Insert record into tbl_excel_tracking
+    # 4) Filter out Excel files that are already tracked
+    excel_files_to_process = [f for f in all_excel_files if f not in tracked_files]
+    if not excel_files_to_process:
+        print("No new Excel files to process. Exiting.")
+        return
+
+    print(f"Excel files to process: {excel_files_to_process}")
+
+    for excel_file in excel_files_to_process:
+        # 5) Insert record into tbl_excel_tracking
         tracking_id = insert_excel_tracking_record(excel_file)
 
-        # 4) Read the Excel file
+        # 6) Read the Excel file
         file_path = os.path.join(INPUT_FOLDER, excel_file)
         print(f"\nReading Excel file: {file_path}")
         try:
@@ -451,7 +468,7 @@ def main():
 
         row_dicts = df.to_dict(orient="records")
 
-        # 5) Process rows in parallel (thread pool)
+        # 7) Process rows in parallel (thread pool)
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             future_to_row = {executor.submit(process_single_row, row, tracking_id): row for row in row_dicts}
@@ -460,7 +477,7 @@ def main():
                 if res is not None:
                     results.append(res)
 
-        # 6) Insert results into tbl_processing_result
+        # 8) Insert results into tbl_processing_result
         for r in results:
             insert_processing_result(
                 tracking_id=r["tracking_id"],
@@ -478,7 +495,7 @@ def main():
                 overallconfidence=r["overallconfidence"]
             )
 
-        # 7) Build two lists for "Auto Submit" and "Need to Review"
+        # 9) Build two lists for "Auto Submit" and "Need to Review"
         auto_submit = []
         need_review = []
         for r in results:
@@ -487,21 +504,21 @@ def main():
             else:
                 auto_submit.append(r)
 
-        # 8) Create DataFrames
+        # 10) Create DataFrames
         df_auto = pd.DataFrame(auto_submit)
         df_review = pd.DataFrame(need_review)
 
-        # 9) Create a unique name for the output Excel
+        # 11) Create a unique name for the output Excel
         current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         output_file_name = f"{os.path.splitext(excel_file)[0]}_output_{current_datetime}.xlsx"
         output_path = os.path.join(OUTPUT_FOLDER, output_file_name)
 
-        # 10) Ensure output folder exists
+        # 12) Ensure output folder exists
         if not os.path.exists(OUTPUT_FOLDER):
             os.makedirs(OUTPUT_FOLDER)
             print(f"Created output folder '{OUTPUT_FOLDER}'.")
 
-        # 11) Write both sheets
+        # 13) Write both sheets
         try:
             with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
                 if not df_auto.empty:
@@ -512,11 +529,12 @@ def main():
         except Exception as e:
             print(f"Error writing output Excel file '{output_path}': {e}")
 
-        # 12) Update tbl_excel_tracking.isread = 1
+        # 14) Update tbl_excel_tracking.isread = 1
         update_tracking_isread(tracking_id)
 
-    print("\nAll Excel files have been processed.")
+    print("\nAll new Excel files have been processed.")
 
-
+# --------------------- ENTRY POINT ---------------------
 if __name__ == "__main__":
     main()
+
