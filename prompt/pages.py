@@ -172,110 +172,14 @@ Provide the extracted and validated information, along with the confidence score
   ],
   "PageValidation": {
     "AllPagesPresent": "<Yes, No, or N/A>",
-    "AllPagesPresentNotes": "<Detailed notes for missing, duplicated pages, or empty if N/A>"
+    "AllPagesPresentNotes": "<Detailed notes for pages, or missing, duplicated pages, or empty if N/A>"
   },
   "CorrectionsValidation": {
     "ChangesInitialed": "<Yes, No, or N/A>",
-    "ChangesInitialedNotes": "<Notes for missing or incomplete initials, or empty if N/A>"
+    "ChangesInitialedNotes": "<Notes for Corrections, or initials, or  missing, or incomplete initials, or empty if N/A>"
   },
   "AllValidationNotes": "<remarks about missing or invalid entries>",
   "ConfidenceScore": <Number between 0 and 1>
-}
-```
-
----
-
-### **Output Examples**
-
-#### **Example 1: All Pages Present and All Corrections Initialed**
-
-**Input**:  
-A recorded mortgage document contains:
-- Footer: "Page X of Y"
-- All pages from 1 to Y are present in sequence.
-- No duplicated pages.
-- All corrections are initialed by the borrower.
-
-**Output**:
-```json
-{
-  "DetectedFooters": [
-    "Page 1 of 10",
-    "Company Name"
-  ],
-  "PageValidation": {
-    "AllPagesPresent": "Yes",
-    "AllPagesPresentNotes": ""
-  },
-  "CorrectionsValidation": {
-    "ChangesInitialed": "Yes",
-    "ChangesInitialedNotes": ""
-  },
-  "AllValidationNotes": "Footer lines excluded. All pages present and corrections initialed.",
-  "ConfidenceScore": 0.98
-}
-```
-
----
-
-#### **Example 2: Missing Uninitialed Corrections**
-
-**Input**:  
-A recorded mortgage document contains:
-- Footer: "Page X of 5"
-- Pages 1 to 5 are present, but page 2 is duplicated.
-- Correction on page 3 is not initialed by the borrower.
-
-
-**Output**:
-```json
-{
-  "DetectedFooters": [
-    "Page 1 of 5",
-    "Company Name"
-  ],
-  "PageValidation": {
-    "AllPagesPresent": "Yes",
-    "AllPagesPresentNotes": "Duplicated pages detected: Page 2 appears twice."
-  },
-  "CorrectionsValidation": {
-    "ChangesInitialed": "No",
-    "ChangesInitialedNotes": "Correction on page 3 not initialed by borrower."
-  },
-  "AllValidationNotes": "Duplicated pages detected and missing pages. Recording Date missing. Corrections not initialed.",
-  "ConfidenceScore": 0.94
-}
-```
-
----
-
-#### **Example 3: No Corrections Made**
-
-**Input**:  
-A recorded mortgage document contains:
-- Footer: "Page X of Y"
-- All pages from 1 to Y are present in sequence.
-- No duplicated pages.
-- No corrections present in the document.
-
-**Output**:
-```json
-{
-  "SecurityInstrumentDate": "01/01/2023",
-  "DetectedFooters": [
-    "Page 1 of 20",
-    "Company Name"
-  ],
-  "PageValidation": {
-    "AllPagesPresent": "Yes",
-    "AllPagesPresentNotes": ""
-  },
-  "CorrectionsValidation": {
-    "ChangesInitialed": "N/A",
-    "ChangesInitialedNotes": ""
-  },
-  "AllValidationNotes": "Footer lines excluded. All pages present. No corrections found.",
-  "ConfidenceScore": 0.90
 }
 ```
 

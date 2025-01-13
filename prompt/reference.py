@@ -130,144 +130,21 @@ The extracted and validated information, along with the confidence score, must b
 ```json
 {
   "BorrowerMatches": "<Yes or No>",
-  "BorrowerNotes": "<Notes for mismatched borrowers>",
+  "BorrowerNotes": "Provide a note for selecting <Yes, No, or N/A>.",
   "DateMatches": "<Yes or No>",
-  "DateNotes": "<Notes for mismatched dates>",
+  "DateNotes": "Provide a note for selecting <Yes, No, or N/A>.",
   "LoanAmountMatches": "<Yes or No>",
-  "LoanAmountNotes": "<Notes for mismatched loan amounts>",
+  "LoanAmountNotes": "Provide a note for selecting <Yes, No, or N/A>.",
   "MaturityDateMatches": "<Yes, No, or N/A>",
-  "MaturityDateNotes": "<Notes for mismatched maturity dates>",
+  "MaturityDateNotes": "Provide a note for selecting <Yes, No, or N/A>.",
   "PropertyAddressMatches": "<Yes or No>",
-  "PropertyAddressNotes": "<Notes for mismatched property addresses>",
+  "PropertyAddressNotes": "Provide a note for selecting <Yes, No, or N/A>.",
   "MINMatches": "<Yes, No, or N/A>",
-  "MINNotes": "<Notes for missing or mismatched MIN numbers>",
-  "AllValidationNotes": "<Aggregated notes for all mismatches and issues>",
+  "MINNotes": "Provide a note for selecting <Yes, No, or N/A>.",
+  "AllValidationNotes": "<Aggregated notes for all  and issues>",
   "ConfidenceScore": <Number between 0 and 1>
 }
 ```
-
----
-
-### **Examples**
-
-#### **Example 1: All Fields Match with High Confidence**
-
-**Input**:
-- Reference Fields:
-  - Borrower: "John A. Doe"
-  - MIN: "123-456-789"
-  - Note Date: "04/15/2023"
-  - Maturity Date: "04/15/2033"
-  - Loan Amount: "$250,000"
-  - Property Address: "456 Elm Street, Apt 12, Springfield, IL 62704"
-- Extracted Document Data:
-  - Borrower: "John Doe"
-  - MIN: "123456789"
-  - Note Date: "04/15/2023"
-  - Maturity Date: "04/15/2033"
-  - Loan Amount: "$250,000"
-  - Property Address: "456 Elm St Apt 12, Springfield, IL 62704"
-
-**Output**:
-```json
-{
-  "BorrowerMatches": "Yes",
-  "BorrowerNotes": "",
-  "DateMatches": "Yes",
-  "DateNotes": "",
-  "LoanAmountMatches": "Yes",
-  "LoanAmountNotes": "",
-  "MaturityDateMatches": "Yes",
-  "MaturityDateNotes": "",
-  "PropertyAddressMatches": "Yes",
-  "PropertyAddressNotes": "",
-  "MINMatches": "Yes",
-  "MINNotes": "",
-  "AllValidationNotes": "",
-  "ConfidenceScore": 0.95
-}
-```
-
----
-
-#### **Example 2: Multiple Mismatches with Moderate Confidence**
-
-**Input**:
-- Reference Fields:
-  - Borrower: "Jane B. Smith"
-  - MIN: "987-654-321"
-  - Note Date: "03/10/2022"
-  - Maturity Date: "03/10/2032"
-  - Loan Amount: "$180,000"
-  - Property Address: "789 Pine Avenue, Springfield, IL 62705"
-- Extracted Document Data:
-  - Borrower: "Jane Smith"
-  - MIN: "987654320"
-  - Note Date: "03/11/2022"
-  - Maturity Date: "03/10/2032"
-  - Loan Amount: "$180,000"
-  - Property Address: "789 Pine Ave, Springfield, IL 62705"
-
-**Output**:
-```json
-{
-  "BorrowerMatches": "Yes",
-  "BorrowerNotes": "",
-  "DateMatches": "No",
-  "DateNotes": "S – {Note_Date} D – 03/11/2022",
-  "LoanAmountMatches": "Yes",
-  "LoanAmountNotes": "",
-  "MaturityDateMatches": "Yes",
-  "MaturityDateNotes": "",
-  "PropertyAddressMatches": "Yes",
-  "PropertyAddressNotes": "",
-  "MINMatches": "No",
-  "MINNotes": "S – {MIN} D – 987654320",
-  "AllValidationNotes": "Note Date mismatch and MIN number mismatch.",
-  "ConfidenceScore": 0.75
-}
-```
-
----
-
-#### **Example 3: Missing MIN Number with Low Confidence**
-
-**Input**:
-- Reference Fields:
-  - Borrower: "Alice C. Johnson"
-  - MIN: "555-666-777"
-  - Note Date: "06/20/2021"
-  - Maturity Date: "06/20/2031"
-  - Loan Amount: "$300,000"
-  - Property Address: "321 Oak Lane, Springfield, IL 62706"
-- Extracted Document Data:
-  - Borrower: "Alice Johnson"
-  - MIN: ""
-  - Note Date: "06/20/2021"
-  - Maturity Date: "06/20/2031"
-  - Loan Amount: "$300,000"
-  - Property Address: "321 Oak Ln, Springfield, IL 62706"
-
-**Output**:
-```json
-{
-  "BorrowerMatches": "Yes",
-  "BorrowerNotes": "",
-  "DateMatches": "Yes",
-  "DateNotes": "",
-  "LoanAmountMatches": "Yes",
-  "LoanAmountNotes": "",
-  "MaturityDateMatches": "Yes",
-  "MaturityDateNotes": "",
-  "PropertyAddressMatches": "Yes",
-  "PropertyAddressNotes": "",
-  "MINMatches": "No",
-  "MINNotes": "MIN number is missing.",
-  "AllValidationNotes": "Missing MIN number.",
-  "ConfidenceScore": 0.60
-}
-```
-
 ---
 
 ### **Additional Notes**
@@ -301,6 +178,9 @@ The extracted and validated information, along with the confidence score, must b
 
 8. **Handling Multiple Occurrences**:
    - Documents may contain multiple instances requiring validation. Ensure each reference field is validated independently and accurately.
+
+9. **Field Validation Outcomes**:
+  - Each reference field has a corresponding match status (Yes, No, or N/A) and a notes section for detailed explanations.
 
 ---
 """
