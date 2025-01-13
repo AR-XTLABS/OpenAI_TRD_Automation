@@ -119,6 +119,12 @@ You are a **Document Analysis AI** tasked with extracting and validating **Recor
     - `DOC#`, `File #`, `INST#`, `INSTRUMENT NO.`, `DOCUMENT NO.`, etc.
   - **10%** of Document Numbers will be unlabeled or have non-standard labels.
   
+- **Exclusion Criteria for Document Number**:
+   - Ensure that the following fields are **not** extracted or considered during validation:
+     - **Loan Number** (e.g., `LOAN #: 16102402157687`)
+     - **Order Number** (e.g., `Title Order No.: FS2403105443`)
+     - **Escrow Number** (e.g., `Escrow No.: FS24093105443`)
+
 - **Identify Labeled Document Numbers**:
   - Use common labels (case-insensitive):
     - **DOC#**, **File #**, **INST#**, **INSTRUMENT NO.**, **DOCUMENT NO.**
@@ -296,7 +302,7 @@ Total Fees: $56.00
     }
   ],
   "AllValidationNotes": "Recording Date missing in the provided data.",
-  "ConfidenceScore": 0.60
+  "ConfidenceScore": 0.94
 }
 ```
 
@@ -310,11 +316,6 @@ Total Fees: $56.00
    - **0.50–0.69**: Low confidence; significant discrepancies or multiple issues detected.
    - **Below 0.50**: Very low confidence; major issues or inability to validate critical fields.
 
-2. **Exclusion Criteria for Document Number**:
-   - Ensure that the following fields are **not** extracted or considered during validation:
-     - **Loan Number** (e.g., `LOAN #: 16102402157687`)
-     - **Order Number** (e.g., `Title Order No.: FS2403105443`)
-     - **Escrow Number** (e.g., `Escrow No.: FS24093105443`)
 
 """
 

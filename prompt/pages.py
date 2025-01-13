@@ -112,24 +112,21 @@ Provide the findings in the following structured JSON format:
 
 #### **Example 1: Complete Document**
 **Input**:  
-A document with all core pages present, no duplicates, and all corrections initialed.
+A document with all core pages present, no duplicates, and no corrections initialed.
 
 **Output**:
 ```json
 {
   "PageValidation": {
     "AllPagesPresent": "Yes",
-    "AdjustedTotalPages": 20,
-    "AllPagesPresentNotes": "",
-    "RidersAndExhibitsExcluded": 0,
-    "DuplicatedPagesDetected": 0
+    "AllPagesPresentNotes": ""
   },
   "CorrectionsValidation": {
-    "ChangesInitialed": "Yes",
+    "ChangesInitialed": "N/A",
     "ChangesInitialedNotes": ""
   },
   "AllValidationNotes": "",
-  "ConfidenceScore": 0.95
+  "ConfidenceScore": 0.98
 }
 ```
 
