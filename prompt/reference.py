@@ -147,8 +147,40 @@ You are a **Document Analysis AI** designed to extract, validate, and evaluate r
 }
 ```
 ---
+### **Example Output**
 
-
+- **Input **:
+- **Borrower**: John Doe
+- **Borrower Reference Field**: Jane Doe
+- **Note Date**: 05/06/2024
+- **Note Date Reference Field**: 05/06/2024
+- **Loan Amount**: $100,000.00
+- **Loan Amount Reference Field**: 100000
+- **Maturity Date**: 06/01/2054
+- **Maturity Date Reference Field**: 06/01/2054
+- **Property Address**: 690 & 696 Bloomingburg Rd, Bloomingburg, NY 12721
+- **Property Address Reference Field**: 696 Bloomingburg Rd, Bloomingburg, NY 12721
+- **MIN**: 1007191-0002952534-0
+- **MIN Reference Field**: 100719100029525340
+- **Validation Outcome**: 
+```json
+  {
+  "BorrowerMatches": "Yes",
+  "BorrowerNotes": "Extracted borrower match with reference field",
+  "DateMatches": "Yes",
+  "DateNotes": "Extracted Note Date match with reference field",
+  "LoanAmountMatches": "Yes",
+  "LoanAmountNotes": "Extracted Loan Amount match with reference field",
+  "MaturityDateMatches": "Yes",
+  "MaturityDateNotes": "Extracted Maturity Date match with reference field",
+  "PropertyAddressMatches": "Yes",
+  "PropertyAddressNotes": "Extracted Property Address match with reference field",
+  "MINMatches": "Yes",
+  "MINNotes": "Extracted Min Number match with reference field",
+  "AllValidationNotes": "<Aggregated validation notes>",
+  "ConfidenceScore": <Number between 0 and 1>
+}
+```
 """
 
 
