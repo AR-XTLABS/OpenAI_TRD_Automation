@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import json
+import shutil
 from PIL import Image
 from pdf2image import convert_from_path
 import concurrent.futures
@@ -33,7 +34,7 @@ INPUT_FOLDER = "input_excel"       # Folder where .xls or .xlsx files are read
 OUTPUT_FOLDER = "outputs"          # Folder to store final output Excel
 TEMP_IMAGES_DIR = "temp_images"    # Base directory for storing reference subfolders
 PDF_FOLDER = ""
-MAX_WORKERS = 4                    # Number of parallel threads (rows processed in parallel)
+MAX_WORKERS = 5                    # Number of parallel threads (rows processed in parallel)
 # ------------------------------------------------
 
 def get_connection():
@@ -255,13 +256,12 @@ def cleanup_temp_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR
         print(f"The folder '{ref_folder}' does not exist.")
         return
 
+
     try:
-
-        os.rmdir(ref_folder)
-        print(f"Removed folder: {ref_folder}")
-
+        shutil.rmtree(ref_folder)
+        print(f"Successfully removed the directory: {ref_folder}")
     except Exception as e:
-        print(f"Error while cleaning up temporary files for reference {referenceid}: {e}")
+        print(f"Error while cleaning up temporary files for reference: {e}")
 
 def encode_image(image):
     """
@@ -303,7 +303,9 @@ def process_single_row(row, tracking_id):
         documenttype = row.get('documenttype', '')
         pdf_path = row.get('pdf_path', '')
         borrower = row.get('borrower', '')
-        loan_amount = float(row.get('amount', 0.0))  # ensure float
+        amount_str = str(row.get('amount', 0.0)) if isinstance(row.get('amount', 0.0), str) else row.get('amount', 0.0)
+        loan_amount = float(str(amount_str).replace(',', ''))
+        # loan_amount = float(str(row.get('amount', 0.0).replace(',','')))  # ensure float
         property_address = row.get('propertyaddress', '')
         note_date = row.get('notedate', '')
         min_number = row.get('minnumber', '')
@@ -329,11 +331,11 @@ def process_single_row(row, tracking_id):
         # (or build a dynamic system prompt yourself).
         # Example placeholders:
         system_messages = reference_prompt.replace('{Borrower}', borrower)\
-                                          .replace('{MIN}', str(min_number))\
-                                          .replace('{Note_Date}', note_date)\
-                                          .replace('{Maturity_Date}', maturity_date)\
-                                          .replace('{Loan_Amount}', str(loan_amount))\
-                                          .replace('{Property_Address}', property_address)
+                                        .replace('{MIN}', str(min_number))\
+                                        .replace('{Note_Date}', note_date)\
+                                        .replace('{Maturity_Date}', maturity_date)\
+                                        .replace('{Loan_Amount}', str(loan_amount))\
+                                        .replace('{Property_Address}', property_address)
 
         # Start conversation with system + user (images)
         conversation = [
@@ -491,7 +493,7 @@ def main():
                 notedate=r["notedate"],
                 minnumber=r["minnumber"],
                 maturitydate=r["maturitydate"],
-                output=r["output"],
+                output=json.dumps(r["output"]),
                 overallconfidence=r["overallconfidence"]
             )
 
