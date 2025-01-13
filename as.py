@@ -12,12 +12,9 @@ from PIL import Image
 from pdf2image import convert_from_path
 import concurrent.futures
 from prompt.identity_stamp import identitystamp
-from prompt.changes import changes_prompt
 from prompt.legal import legal_prompt
 from prompt.pages import pages_prompt
 from prompt.reference import reference_prompt
-from prompt.rider import riders_prompt
-from prompt.score import Score_prompt
 from openai import OpenAI
 
 # ---------------- CONFIGURATION ----------------
@@ -279,7 +276,7 @@ def send_conversation_to_gpt(messages):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=messages,
             temperature=1,
             response_format={
@@ -290,7 +287,146 @@ def send_conversation_to_gpt(messages):
     except Exception as e:
         print(f"Error communicating with GPT: {e}")
         return "An error occurred while processing your request."
+from statistics import mean
+def get_output_confidence(all_response):
+    # Parse each JSON string into a Python dictionary
+    parsed_data = [json.loads(item) for item in all_response]
 
+    # Initialize variables to collect required data
+    overall_validation_notes = []
+    confidence_scores = []
+    context_lines = []
+
+    # Initialize the transformed data dictionary
+    transformed_data = {
+        "BorrowerMatches": None,
+        "BorrowerNotes": None,
+        "DateMatches": None,
+        "DateNotes": None,
+        "LoanAmountMatches": None,
+        "LoanAmountNotes": None,
+        "MaturityDateMatches": None,
+        "MaturityDateNotes": None,
+        "PropertyAddressMatches": None,
+        "PropertyAddressNotes": None,
+        "MINMatches": None,
+        "MINNotes": None,
+        "DocumentNumber": None,
+        "Book": None,
+        "Page": None,
+        "RecordingDate": None,
+        "RecordingTime": None,
+        "RecordingFee": None,
+        "CountyRecorderName": None,
+        "CountyName": None,
+        "IsDocumentRecorded": None,
+        "LegalDescriptionIncluded": None,
+        "LegalDescriptionNotes": None,
+        "PartiesSigned": None,
+        "PartiesSignedNotes": None,
+        "TrusteeNameProvided": None,
+        "TrusteeNameNotes": None,
+        "AllPagesPresent": None,
+        "AllPagesPresentNotes": None,
+        "ChangesInitialed": None,
+        "ChangesInitialedNotes": None,
+        "AllRidersPresent": None,
+        "MERSRiderPresent": None,
+        "AllRidersNotes": None,
+        "MERSRiderNotes": None,
+        "AllValidationNotes": "",
+        "ConfidenceScore": 0.0,
+        "ContextLines": []
+    }
+
+    # Iterate through each parsed JSON object
+    for item in parsed_data:
+        # Aggregate Overall Validation Notes
+        if "AllValidationNotes" in item and item["AllValidationNotes"].strip():
+            overall_validation_notes.append(item["AllValidationNotes"])
+        
+        # Collect Confidence Scores
+        if "ConfidenceScore" in item:
+            confidence_scores.append(item["ConfidenceScore"])
+        
+        # Extract specific fields
+        # Borrower and Loan Details
+        transformed_data["BorrowerMatches"] = item.get("BorrowerMatches", transformed_data["BorrowerMatches"])
+        transformed_data["BorrowerNotes"] = item.get("BorrowerNotes", transformed_data["BorrowerNotes"])
+        transformed_data["DateMatches"] = item.get("DateMatches", transformed_data["DateMatches"])
+        transformed_data["DateNotes"] = item.get("DateNotes", transformed_data["DateNotes"])
+        transformed_data["LoanAmountMatches"] = item.get("LoanAmountMatches", transformed_data["LoanAmountMatches"])
+        transformed_data["LoanAmountNotes"] = item.get("LoanAmountNotes", transformed_data["LoanAmountNotes"])
+        transformed_data["MaturityDateMatches"] = item.get("MaturityDateMatches", transformed_data["MaturityDateMatches"])
+        transformed_data["MaturityDateNotes"] = item.get("MaturityDateNotes", transformed_data["MaturityDateNotes"])
+        transformed_data["PropertyAddressMatches"] = item.get("PropertyAddressMatches", transformed_data["PropertyAddressMatches"])
+        transformed_data["PropertyAddressNotes"] = item.get("PropertyAddressNotes", transformed_data["PropertyAddressNotes"])
+        transformed_data["MINMatches"] = item.get("MINMatches", transformed_data["MINMatches"])
+        transformed_data["MINNotes"] = item.get("MINNotes", transformed_data["MINNotes"])
+        
+        # Recording Stamp Details from Occurrences
+        if "Occurrences" in item:
+            for occurrence in item["Occurrences"]:
+                if "RecordingStamp" in occurrence:
+                    recording_stamp = occurrence["RecordingStamp"]
+                    transformed_data["DocumentNumber"] = recording_stamp.get("DocumentNumber", transformed_data["DocumentNumber"])
+                    transformed_data["Book"] = recording_stamp.get("Book", transformed_data["Book"])
+                    transformed_data["Page"] = recording_stamp.get("Page", transformed_data["Page"])
+                    transformed_data["RecordingDate"] = recording_stamp.get("RecordingDate", transformed_data["RecordingDate"])
+                    transformed_data["RecordingTime"] = recording_stamp.get("RecordingTime", transformed_data["RecordingTime"])
+                    transformed_data["RecordingFee"] = recording_stamp.get("RecordingFee", transformed_data["RecordingFee"])
+                    transformed_data["CountyRecorderName"] = recording_stamp.get("CountyRecorderName", transformed_data["CountyRecorderName"])
+                    transformed_data["CountyName"] = recording_stamp.get("CountyName", transformed_data["CountyName"])
+                    transformed_data["IsDocumentRecorded"] = recording_stamp.get("IsDocumentRecorded", transformed_data["IsDocumentRecorded"])
+                
+                # Collect Context Lines
+                if "ContextLines" in occurrence:
+                    for context in occurrence["ContextLines"]:
+                        text = context.get("text", "").strip()
+                        if text:
+                            context_lines.append(text)
+        
+        # Legal and Riders Information
+        transformed_data["LegalDescriptionIncluded"] = item.get("LegalDescriptionIncluded", transformed_data["LegalDescriptionIncluded"])
+        transformed_data["LegalDescriptionNotes"] = item.get("LegalDescriptionNotes", transformed_data["LegalDescriptionNotes"])
+        transformed_data["PartiesSigned"] = item.get("PartiesSigned", transformed_data["PartiesSigned"])
+        transformed_data["PartiesSignedNotes"] = item.get("PartiesSignedNotes", transformed_data["PartiesSignedNotes"])
+        transformed_data["TrusteeNameProvided"] = item.get("TrusteeNameProvided", transformed_data["TrusteeNameProvided"])
+        transformed_data["TrusteeNameNotes"] = item.get("TrusteeNameNotes", transformed_data["TrusteeNameNotes"])
+        transformed_data["AllRidersPresent"] = item.get("AllRidersPresent", transformed_data["AllRidersPresent"])
+        transformed_data["MERSRiderPresent"] = item.get("MERSRiderPresent", transformed_data["MERSRiderPresent"])
+        transformed_data["AllRidersNotes"] = item.get("AllRidersNotes", transformed_data["AllRidersNotes"])
+        transformed_data["MERSRiderNotes"] = item.get("MERSRiderNotes", transformed_data["MERSRiderNotes"])
+        
+        # Page and Corrections Validation
+        if "PageValidation" in item:
+            transformed_data["AllPagesPresent"] = item["PageValidation"].get("AllPagesPresent", transformed_data["AllPagesPresent"])
+            transformed_data["AllPagesPresentNotes"] = item["PageValidation"].get("AllPagesPresentNotes", transformed_data["AllPagesPresentNotes"])
+        if "CorrectionsValidation" in item:
+            transformed_data["ChangesInitialed"] = item["CorrectionsValidation"].get("ChangesInitialed", transformed_data["ChangesInitialed"])
+            transformed_data["ChangesInitialedNotes"] = item["CorrectionsValidation"].get("ChangesInitialedNotes", transformed_data["ChangesInitialedNotes"])
+        
+        # Collect Context Lines if present outside Occurrences
+        # (In the provided data, ContextLines are only within Occurrences)
+        # If needed, add similar extraction here
+        
+    # Combine all Overall Validation Notes
+    transformed_data["AllValidationNotes"] = " ".join(overall_validation_notes)
+
+    # Calculate the average Confidence Score
+    if confidence_scores:
+        transformed_data["ConfidenceScore"] = round(mean(confidence_scores), 2)
+
+    # Add collected Context Lines
+    transformed_data["ContextLines"] = context_lines
+
+    # Optional: Remove None values for cleaner output
+    # transformed_data_cleaned = {k: v for k, v in transformed_data.items() if v is not None and v != ""}
+
+    # Output the transformed data as a JSON string with indentation for readability
+    print(json.dumps(transformed_data, indent=4))
+
+    return transformed_data, transformed_data["ConfidenceScore"]
 def process_single_row(row, tracking_id):
     """
     Processes a single row: convert PDF to images, send images to GPT for multiple prompts,
@@ -353,10 +489,11 @@ def process_single_row(row, tracking_id):
                 ],
             },
         ]
-
+        all_response = []
         # ------------- STEP 5: FIRST GPT RESPONSE (INITIAL) -------------
         print(f"Sending initial request to GPT-4 for reference {referencenumber}...")
         initial_response = send_conversation_to_gpt(conversation)
+        all_response.append(initial_response)
         # Add the assistant response to the conversation history
         conversation.append({"role": "assistant", "content": initial_response})
 
@@ -368,17 +505,13 @@ def process_single_row(row, tracking_id):
         additional_prompts = [
             identity_stamp,
             legal_prompt,
-            pages_prompt,
-            changes_prompt,
-            riders_prompt,
-            Score_prompt,
+            pages_prompt
         ]
 
         # ------------- STEP 7: SEND EACH ADDITIONAL PROMPT -------------
         final_output = ""
         overall_conf = 0.0
-        length = len(additional_prompts)
-        for i, prompt in enumerate(additional_prompts, start=1):
+        for i, prompt in enumerate(additional_prompts):
             # Add user prompt
             conversation.append({"role": "user", "content": prompt})
 
@@ -386,18 +519,9 @@ def process_single_row(row, tracking_id):
             response = send_conversation_to_gpt(conversation)
             # Add assistant's response to the conversation
             conversation.append({"role": "assistant", "content": response})
-
+            all_response.append(response)
             # If this is the last prompt, parse the final JSON
-            if i == length:
-                try:
-                    parsed_response = json.loads(response)
-                    final_output = parsed_response.get("MergedResponse", "No Output")
-                    overall_conf = parsed_response.get("OverallConfidence", 0.0)
-                except Exception as e:
-                    print(f"Error parsing final JSON for reference {referencenumber}: {e}")
-                    final_output = "No Output"
-                    overall_conf = 0.0
-
+        final_output, overall_conf = get_output_confidence(all_response)
         # ------------- STEP 8: CLEAN UP TEMP IMAGES FOR THIS REFERENCE -------------
         cleanup_temp_images_for_reference(referencenumber)
 
