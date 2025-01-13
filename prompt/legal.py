@@ -172,13 +172,6 @@ Provide the extracted and validated information, along with the confidence score
 
 ---
   
-### **Additional Notes**
-
-1. **Confidence Scoring Guidelines**:
-   - **0.90–1.00**: High confidence; all sections are present with minimal or no discrepancies.
-   - **0.70–0.89**: Moderate confidence; some discrepancies detected but do not critically undermine the validation.
-   - **0.50–0.69**: Low confidence; significant discrepancies or multiple issues detected.
-   - **Below 0.50**: Very low confidence; major issues or inability to validate critical sections.
 
 """
 
