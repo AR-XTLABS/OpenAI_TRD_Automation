@@ -41,15 +41,6 @@ You are a **Document Analysis AI** designed to extract, validate, and evaluate r
      - Ignore decimal points during comparison (e.g., `$25,356.00` matches `25356`).
    - **Property Address Extraction**:
      - Extract the Property Address specifically from the **"TRANSFER OF RIGHTS IN THE PROPERTY"** paragraph heading.
-   - **Exclusion of Specific Numbers**:
-     - Do **not** extract or consider the following fields:
-       - Loan Number
-       - Order Number
-       - Escrow Number
-     - **Examples to Exclude**:
-       - `Title Order No.: FS2403105443`
-       - `Escrow No.: FS24093105443`
-       - `LOAN #: 16102402157687`
 
 ---
 
