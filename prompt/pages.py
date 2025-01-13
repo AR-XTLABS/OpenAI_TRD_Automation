@@ -187,56 +187,11 @@ Provide the extracted and validated information, along with the confidence score
 
 ### **Additional Notes**
 
-1. **Page Validation**:
-   - **Footer Validation**:
-     - Use footers like "Page X of Y" to confirm total page counts and sequence.
-     - Consider variations in footer formats (e.g., "Page 1 of 10").
-   - **Exclude Riders**:
-     - Ensure that attached riders are not included in the total page count unless explicitly part of the security instrument.
-   - **Detecting Duplicates**:
-     - Utilize content comparison techniques to accurately identify duplicated pages.
-     - Consider both visible content and underlying metadata for comprehensive detection.
-   - **Detailed Notes for Missing and Duplicated Pages**:
-     - Provide clear details for missing or duplicated pages in the `AllPagesPresentNotes` field, including page numbers or ranges.
-
-2. **Corrections Validation**:
-   - **Corrections Detection**:
-     - Look for visual indicators such as strikethroughs, added or rewritten text.
-     - Consider variations in document formatting when identifying corrections.
-   - **Placement of Initials**:
-     - Ensure initials are near corrections:
-       - In the margins.
-       - Adjacent to or below the corrected text.
-   - **Detailed Notes**:
-     - Specify page numbers and descriptions for any missing or incomplete initials in `ChangesInitialedNotes`.
-   - **Use "N/A" Appropriately**:
-     - Select N/A if no corrections are present in the document.
-     - Leave `ChangesInitialedNotes` empty in such cases.
-
-3. **General Validation Evaluation**:
-   - Ensure that all validation outcomes are accurate, consistent, and clearly articulated.
-   - Resolve any identified issues such as factual inaccuracies or logical inconsistencies to enhance reliability.
-
-4. **Confidence Scoring Guidelines**:
+1. **Confidence Scoring Guidelines**:
    - **0.90–1.00**: High confidence; all fields are present with minimal or no discrepancies.
    - **0.70–0.89**: Moderate confidence; some discrepancies detected but do not critically undermine the validation.
    - **0.50–0.69**: Low confidence; significant discrepancies or multiple issues detected.
    - **Below 0.50**: Very low confidence; major issues or inability to validate critical fields.
-
-5. **Error Handling**:
-   - In cases where extracted data is incomplete or unreadable, appropriately assign `N/A` to the affected fields and reflect these in the `AllValidationNotes` and `ConfidenceScore`.
-   - Example: If the **Recording Fee** is unreadable, set `"RecordingFee": ""` and add a note `"Recording Fee is unreadable."`.
-
-6. **Performance Considerations**:
-   - Optimize processing to handle large documents efficiently without compromising accuracy.
-   - Utilize effective pattern recognition and exclusion techniques to streamline footer detection, page validation, and Recording Stamp extraction.
-
-7. **Clarity and Consistency**:
-   - Ensure that all outputs are consistent in structure and detail, making it easy to identify and resolve issues.
-   - Maintain uniform formatting across all extracted and validated fields.
-
-8. **Handling Multiple Occurrences**:
-   - Documents may contain multiple Recording Stamps or corrections (e.g., for amendments or corrections). Each occurrence should be treated independently with its own context and validation.
 
 ---
 """

@@ -286,48 +286,11 @@ Total Fees: $56.00
 
 ### **Additional Notes**
 
-1. **Recording Stamp Extraction**:
-   - **Variations in Labels**: Document Numbers can be labeled differently (e.g., DOC#, INST#, INSTRUMENT NO.). Utilize regex patterns to capture these variations accurately.
-   - **Unlabeled Document Numbers**: For the 10% of Document Numbers without standard labels, rely on contextual patterns and alphanumeric structures that typically precede or follow such numbers.
-   - **Formatting Consistency**: Ensure all extracted dates and times adhere to the specified formats for consistency.
-
-2. **Footer Detection**:
-   - **Repetitive Patterns**: Footers often contain standard phrases or patterns that repeat across pages. Accurately identify these to exclude them from the main content.
-   - **Location Consistency**: Footers typically appear in the bottom 3–5 lines of every page, aiding in their detection.
-
-3. **Context Lines**:
-   - **Relevance**: Context lines provide additional information surrounding the Recording Stamp, aiding in validation and verification.
-   - **Exclusion of Footers**: Ensure that context lines do not include footer information to maintain clarity.
-   - **Group of Phrases Limitation**: Within the group of phrases, ensure that the context consists of a maximum of **10 lines of text** or spans as part of a **table structure** on the page.
-
-4. **Handling Multiple Occurrences**:
-   - Documents may contain multiple Recording Stamps (e.g., for amendments or corrections). Each occurrence should be treated independently with its own context and validation.
-
-5. **AllValidationNotes Field**:
-   - **Clarity**: Provide clear and concise remarks about any missing or invalid entries to facilitate easy identification and resolution of issues.
-   - **Detailing**: Include specific reasons for omissions or discrepancies (e.g., "Document Number missing", "Recording Date before Security Instrument Date").
-
-6. **Confidence Scoring Guidelines**:
+1. **Confidence Scoring Guidelines**:
    - **0.90–1.00**: High confidence; all fields are present with minimal or no discrepancies.
    - **0.70–0.89**: Moderate confidence; some discrepancies detected but do not critically undermine the validation.
    - **0.50–0.69**: Low confidence; significant discrepancies or multiple issues detected.
    - **Below 0.50**: Very low confidence; major issues or inability to validate critical fields.
-
-7. **Validation Evaluation Process**:
-   - After completing all extraction and validation steps, perform a holistic review to ensure that the validation outcomes are accurate and free from internal inconsistencies.
-   - Adjust the confidence score accordingly based on the thoroughness and reliability of the validation process.
-
-8. **Error Handling**:
-   - In cases where extracted data is incomplete or unreadable, appropriately assign `N/A` to the affected fields and reflect these in the `AllValidationNotes` and `ConfidenceScore`.
-   - Example: If the **Recording Fee** is unreadable, set `"RecordingFee": ""` and add a note `"Recording Fee is unreadable."`.
-
-9. **Performance Considerations**:
-   - Optimize processing to handle large documents efficiently without compromising accuracy.
-   - Utilize effective pattern recognition and exclusion techniques to streamline footer detection and Recording Stamp extraction.
-
-10. **Clarity and Consistency**:
-    - Ensure that all outputs are consistent in structure and detail, making it easy to identify and resolve issues.
-    - Maintain uniform formatting across all extracted and validated fields.
 
 ---
 """
