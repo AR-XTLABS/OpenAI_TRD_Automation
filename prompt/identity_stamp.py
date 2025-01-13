@@ -81,7 +81,7 @@ You are a **Document Analysis AI** tasked with extracting and validating **Recor
              "RecordingFee": "<amount or empty>",
              "CountyRecorderName": "<name or empty>",
              "CountyName": "<name or empty>",
-             "IsDocumentRecorded": "<Yes, No, or N/A>"
+             "IsDocumentRecorded": "<Yes, No>"
            },
            "ContextLines": [
              {"text": "<line above or below stamp>"}
@@ -96,13 +96,123 @@ You are a **Document Analysis AI** tasked with extracting and validating **Recor
 
 ---
 
+### **Instructions for Extraction and Validation**
+
+#### **Step 1: Locate Recording Stamps**
+- Analyze all pages to locate **Recording Stamps**, which may appear:
+  - **At the top**, **middle**, or **end** of the page.
+  - **Within the group of phrases**, ensure that the context consists of a maximum of **10 lines of text** or spans as part of a **table structure** on the page.
+- Extract key entities such as **Book/Page**, **Document Number**, and **Recording Date-Time**.
+
+#### **Step 2: Validate Recording Dates**
+- Ensure each **Recording Date** is **on or after** `{SecurityInstrumentDate}`.
+- Exclude any Recording Stamps with dates earlier than `{SecurityInstrumentDate}`.
+
+#### **Step 3: Recognize Document Number Labels**
+- **Document Number Labeling Distribution**:
+  - **90%** of Document Numbers will be labeled, mostly starting with:
+    - `yyyy` (e.g., "2023")
+    - `yy` (e.g., "23")
+    - `[A-Z]yy` (e.g., "A23")
+    - `[A-Z]yyyy` (e.g., "B2023")
+  - **10%** of Document Numbers will be unlabeled or have non-standard labels.
+  
+- **Identify Labeled Document Numbers**:
+  - Use common labels (case-insensitive):
+    - **DOC#**, **File #**, **INST#**, **INSTRUMENT NO.**, **DOCUMENT NO.**, etc.
+  - Utilize regex patterns to detect these labels:
+    - Example Regex: `(DOC|File|INST|INSTRUMENT|DOCUMENT)\s*(#|NO)?\s*[:\-]?\s*\w+`
+  
+- **Identify Unlabeled Document Numbers**:
+  - For the remaining 10%, detect Document Numbers based on patterns:
+    - Start with `yyyy`, `yy`, `[A-Z]yy`, or `[A-Z]yyyy`.
+    - Followed by alphanumeric characters.
+  - Example Regex for Unlabeled: `\b(?:[A-Z]{0,1}\d{2,4})\w*\b`
+  
+- **Extraction Strategy**:
+  - Prioritize labeled Document Numbers.
+  - If a labeled Document Number is not found, apply the unlabeled detection regex.
+  - Ensure that unlabeled detections are contextually relevant to avoid false positives.
+
+#### **Step 4: Detect and Exclude Footer Sections**
+- Identify repetitive patterns across pages:
+  - **Standard footer text** (e.g., "Page x of y").
+  - **Prepared-by lines** (e.g., "XYZ Company").
+- Exclude these lines from Recording Stamp and context line extraction.
+
+#### **Step 5: Extract Context Lines**
+- Extract up to **10 lines above** and **10 lines below** each valid Recording Stamp.
+- **Within the group of phrases**, ensure that the context consists of a maximum of **10 lines of text** or spans as part of a **table structure** on the page.
+- Ensure footer lines are excluded from the context.
+
+#### **Step 6: Handle Missing or Ambiguous Data**
+- If key fields (e.g., Recording Date, Document Number) are missing, leave them blank and add remarks in the `AllValidationNotes` field.
+- Examples:
+  - If **Recording Date** is missing: `"Recording Date missing in the provided data."`
+  - If **Document Number** is missing or unlabeled: `"Document Number missing or unlabeled."`
+
+#### **Step 7: Validation Evaluation**
+- **Evaluate** the extracted and validated data for:
+  - **Accuracy**: Ensure all comparisons and validations are correct.
+  - **Consistency**: Check that the validation outcomes are consistent across all sections.
+  - **Clarity**: Ensure that notes and outcomes are clearly articulated.
+- **Resolve** any identified issues such as factual inaccuracies, logical inconsistencies, redundancies, or incomplete explanations to enhance the reliability of the validation results.
+
+#### **Step 8: Assign Confidence Score**
+- **Assess** the overall validation based on:
+  - **Completeness**: Coverage of all required sections and fields.
+  - **Accuracy**: Correctness of each validation outcome.
+  - **Coherence**: Logical flow and structure of the validation process.
+- **Assign** a confidence score between **0** and **1**, where:
+  - **1** indicates full confidence in the validation results.
+  - **0** indicates no confidence due to significant issues.
+  - Scores in between reflect varying levels of confidence based on the assessment.
+
+---
+
+### **Output Formatting**
+
+Provide the extracted and validated information, along with the confidence score, in the following structured JSON format:
+
+```json
+{
+  "SecurityInstrumentDate": "{SecurityInstrumentDate}",
+  "DetectedFooters": [
+    "<list of detected footer lines>"
+  ],
+  "Occurrences": [
+    {
+      "RecordingStamp": {
+        "DocumentNumber": "<alphanumeric or empty>",
+        "Book": "<alphanumeric or empty>",
+        "Page": "<alphanumeric or empty>",
+        "RecordingDate": "<formatted as MM/DD/YYYY>",
+        "RecordingTime": "<formatted as HH:MM AM/PM or empty>",
+        "RecordingFee": "<amount or empty>",
+        "CountyRecorderName": "<name or empty>",
+        "CountyName": "<name or empty>",
+        "IsDocumentRecorded": "<Yes, No, or N/A>"
+      },
+      "ContextLines": [
+        {"text": "<line above or below stamp>"}
+      ]
+    }
+    // ... more occurrences
+  ],
+  "AllValidationNotes": "<remarks about missing or invalid entries>",
+  "ConfidenceScore": <Number between 0 and 1>
+}
+```
+
+---
+
 ### **Output Examples**
 
 #### **Example 1: Complete Recording Stamp**
 **Input:**  
-BK 6821    PG 504 - 513 (10)    DOC# 30090759  
-This Document eRecorded:    07/12/2023    10:48:49 AM  
-Fee Amt: $64.00    Tax: $0.00  
+BK 6821    PG 504 - 513 (10)    DOC# 30090759  
+This Document eRecorded:    07/12/2023    10:48:49 AM  
+Fee Amt: $64.00    Tax: $0.00  
 Orange County, North Carolina  
 MARK CHILTON, Register of Deeds by ANNA WOOD
 
@@ -128,8 +238,8 @@ MARK CHILTON, Register of Deeds by ANNA WOOD
         "IsDocumentRecorded": "Yes"
       },
       "ContextLines": [
-        {"text": "This Document eRecorded:    07/12/2023    10:48:49 AM"},
-        {"text": "Fee: $64.00    Tax: $0.00"}
+        {"text": "This Document eRecorded:    07/12/2023    10:48:49 AM"},
+        {"text": "Fee: $64.00    Tax: $0.00"}
       ]
     }
   ],
@@ -144,7 +254,7 @@ MARK CHILTON, Register of Deeds by ANNA WOOD
 **Input:**  
 BK 1234 PG 789  
 DOC# 789456123
-Rec Fees: $56.00
+Total Fees: $56.00
 **Output:**  
 ```json
 {

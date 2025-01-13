@@ -69,7 +69,7 @@ You are a **Document Analysis AI** designed to extract, validate, and evaluate r
 
 - **Validation Logic**:
   - Compare extracted loan amounts to Reference Field (`{Loan_Amount}`).
-  - Ignore decimal differences (e.g., “123456.00” matches “123456”).
+  - Ignore decimal and dollar symbol differences (e.g., “123456.00” matches “123456”, “$25356.00” matches 25356.0).
 - **Validation Outcomes**:
   - **Yes**: Amounts match, accounting for decimal variations.
   - **No**: Amounts mismatch; include contrasting notes.
