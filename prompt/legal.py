@@ -158,20 +158,21 @@ Provide the extracted and validated information, along with the confidence score
 ```json
 {
   "LegalDescriptionIncluded": "<Yes, No, or N/A>",
-  "LegalDescriptionNotes": "<Detailed notes for missing or ambiguous legal descriptions, or empty if not applicable>",
+  "LegalDescriptionNotes": "<Detailed notes for <Yes, No, or N/A>. >",
   "PartiesSigned": "<Yes, No, or N/A>",
-  "PartiesSignedNotes": "<Detailed notes for missing or ambiguous signatures, or empty if not applicable>",
+  "PartiesSignedNotes": "<Detailed notes for <Yes, No, or N/A>. >",
   "TrusteeNameProvided": "<Yes, No, or N/A>",
-  "TrusteeNameNotes": "<Detailed notes for missing or ambiguous Trustee name, or empty if not applicable>",
+  "TrusteeNameNotes": "<Detailed notes for <Yes, No, or N/A>. >",
   "AllRidersPresent": "<Yes, No, or N/A>",
   "MERSRiderPresent": "<Yes, No, or N/A>",
-  "AllRidersNotes": "<Detailed notes for riders, missing riders, attachments, or signatures>",
-  "MERSRiderNotes": "<Detailed notes for MERS riders, missing or incomplete MERS Rider>",
-  "AllValidationNotes": "<Aggregated notes for all mismatches and issues>",
+  "AllRidersNotes": "<Detailed notes for <Yes, No, or N/A>. >",
+  "MERSRiderNotes": "<Detailed notes for <Yes, No, or N/A>. >",
+  "AllValidationNotes": "<Aggregated notes for all>",
   "ConfidenceScore": <Number between 0 and 1>
 }
 ```
 ---
+
 
 ### **Additional Notes**
 

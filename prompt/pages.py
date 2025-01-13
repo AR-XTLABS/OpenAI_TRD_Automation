@@ -239,8 +239,6 @@ Provide the extracted and validated information, along with the confidence score
    - Documents may contain multiple Recording Stamps or corrections (e.g., for amendments or corrections). Each occurrence should be treated independently with its own context and validation.
 
 ---
-
-By integrating both **Page Validation** and **Corrections Validation** within a unified framework, along with **Validation Evaluation** and **Confidence Scoring**, this comprehensive meta prompt ensures that the Document Analysis AI performs thorough and reliable validations of recorded mortgage documents. This structure facilitates precise extraction and validation of critical information, providing users with clear and actionable insights into the completeness and correctness of their mortgage documents.
 """
 
 
