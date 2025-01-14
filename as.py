@@ -187,31 +187,53 @@ def insert_processing_result(
 
 
 def convert_pdf_to_images(pdf_path, referenceid, base_temp_dir=TEMP_IMAGES_DIR, pdf_location=PDF_FOLDER):
-    
     """
     Convert a PDF to images with preprocessing for better OCR accuracy.
-    Images are saved in a unique subdirectory under base_temp_dir, named with 'referenceid'.
+    Images are saved in a unique subdirectory under base_temp_dir,
+    named using 'referenceid'. Additional denoising and dot-noise
+    removal techniques are applied to improve text clarity.
     """
-    
     # Create a subfolder for this reference ID
     unique_temp_dir = os.path.join(base_temp_dir, str(referenceid))
     pdf_folder_path = os.path.join(pdf_location, pdf_path)
     os.makedirs(unique_temp_dir, exist_ok=True)
 
     try:
+        # Increase DPI for clearer images
         images = convert_from_path(pdf_folder_path, dpi=350)
         image_paths = []
 
         for i, image in enumerate(images):
-            # Preprocess image with OpenCV
+            # Convert PIL Image to OpenCV format
             opencv_image = np.array(image)
+
+            # 1) Convert to grayscale
             gray = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2GRAY)
+
+            # 2) Use a mild median blur to reduce salt-and-pepper noise
+            gray = cv2.medianBlur(gray, 3)
+
+            # 3) Binarize using Otsu's Threshold
             _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
-            thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+
+            # 4) Morphological opening to remove small black specks
+            #    (especially helpful for scanned dot-noise artifacts)
+            kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+            opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_open, iterations=1)
+
+            # 5) Optionally, morphological closing can be used to fill small
+            #    white holes within black text regions (uncomment if needed)
+            kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+            cleaned = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_close, iterations=1)
+            final_image = cleaned
+            #
+            # If you do not need closing, simply use:
+            # final_image = opened
+
+            # Convert back to PIL Image for saving
+            processed_image = Image.fromarray(final_image)
 
             # Save the processed image
-            processed_image = Image.fromarray(thresh)
             image_file = os.path.join(unique_temp_dir, f"page_{i + 1}.png")
             processed_image.save(image_file, "PNG")
             image_paths.append(image_file)
@@ -287,146 +309,165 @@ def send_conversation_to_gpt(messages):
     except Exception as e:
         print(f"Error communicating with GPT: {e}")
         return "An error occurred while processing your request."
-from statistics import mean
+
+
+
+import json
+
 def get_output_confidence(all_response):
+
     # Parse each JSON string into a Python dictionary
     parsed_data = [json.loads(item) for item in all_response]
 
     # Initialize variables to collect required data
-    overall_validation_notes = []
     confidence_scores = []
-    context_lines = []
 
     # Initialize the transformed data dictionary
     transformed_data = {
-        "BorrowerMatches": None,
-        "BorrowerNotes": None,
-        "DateMatches": None,
-        "DateNotes": None,
-        "LoanAmountMatches": None,
-        "LoanAmountNotes": None,
-        "MaturityDateMatches": None,
-        "MaturityDateNotes": None,
-        "PropertyAddressMatches": None,
-        "PropertyAddressNotes": None,
-        "MINMatches": None,
-        "MINNotes": None,
-        "DocumentNumber": None,
-        "Book": None,
-        "Page": None,
-        "RecordingDate": None,
-        "RecordingTime": None,
-        "RecordingFee": None,
-        "CountyRecorderName": None,
-        "CountyName": None,
-        "IsDocumentRecorded": None,
-        "LegalDescriptionIncluded": None,
-        "LegalDescriptionNotes": None,
-        "PartiesSigned": None,
-        "PartiesSignedNotes": None,
-        "TrusteeNameProvided": None,
-        "TrusteeNameNotes": None,
-        "AllPagesPresent": None,
-        "AllPagesPresentNotes": None,
-        "ChangesInitialed": None,
-        "ChangesInitialedNotes": None,
-        "AllRidersPresent": None,
-        "MERSRiderPresent": None,
-        "AllRidersNotes": None,
-        "MERSRiderNotes": None,
-        "AllValidationNotes": "",
-        "ConfidenceScore": 0.0,
-        "ContextLines": []
+        "borrower_validation": None,
+        "borrower_notes": None,
+        "note_date_validation": None,
+        "note_date_notes": None,
+        "loan_amount_validation": None,
+        "loan_amount_notes": None,
+        "maturity_date_validation": None,
+        "maturity_date_notes": None,
+        "property_address_validation": None,
+        "property_address_notes": None,
+        "min_validation": None,
+        "min_notes": None,
+        "document_number": None,
+        "book_volume": None,
+        "page_number": None,
+        "recording_date": None,
+        "recording_time": None,
+        "recording_fee": None,
+        "recorder_clerk_name": None,
+        "county_name": None,
+        "isdocumentrecorded": None,
+        "legal_description_present": None,
+        "legal_description_notes": None,
+        "borrower_signatures_present": None,
+        "borrower_signatures_notes": None,
+        "trustee_name_present": None,
+        "trustee_name_notes": None,
+        "all_riders_present": None,
+        "all_riders_notes": None,
+        "mers_rider_present": None,
+        "mers_rider_notes": None,
+        "page_validation": None,
+        "page_validation_notes": None,
+        "correction_validation": None,
+        "correction_validation_notes": None,
+        "confidence_score": 0.0,
     }
 
-    # Iterate through each parsed JSON object
-    for item in parsed_data:
-        # Aggregate Overall Validation Notes
-        if "AllValidationNotes" in item and item["AllValidationNotes"].strip():
-            overall_validation_notes.append(item["AllValidationNotes"])
-        
-        # Collect Confidence Scores
-        if "ConfidenceScore" in item:
-            confidence_scores.append(item["ConfidenceScore"])
-        
-        # Extract specific fields
-        # Borrower and Loan Details
-        transformed_data["BorrowerMatches"] = item.get("BorrowerMatches", transformed_data["BorrowerMatches"])
-        transformed_data["BorrowerNotes"] = item.get("BorrowerNotes", transformed_data["BorrowerNotes"])
-        transformed_data["DateMatches"] = item.get("DateMatches", transformed_data["DateMatches"])
-        transformed_data["DateNotes"] = item.get("DateNotes", transformed_data["DateNotes"])
-        transformed_data["LoanAmountMatches"] = item.get("LoanAmountMatches", transformed_data["LoanAmountMatches"])
-        transformed_data["LoanAmountNotes"] = item.get("LoanAmountNotes", transformed_data["LoanAmountNotes"])
-        transformed_data["MaturityDateMatches"] = item.get("MaturityDateMatches", transformed_data["MaturityDateMatches"])
-        transformed_data["MaturityDateNotes"] = item.get("MaturityDateNotes", transformed_data["MaturityDateNotes"])
-        transformed_data["PropertyAddressMatches"] = item.get("PropertyAddressMatches", transformed_data["PropertyAddressMatches"])
-        transformed_data["PropertyAddressNotes"] = item.get("PropertyAddressNotes", transformed_data["PropertyAddressNotes"])
-        transformed_data["MINMatches"] = item.get("MINMatches", transformed_data["MINMatches"])
-        transformed_data["MINNotes"] = item.get("MINNotes", transformed_data["MINNotes"])
-        
-        # Recording Stamp Details from Occurrences
-        if "Occurrences" in item:
-            for occurrence in item["Occurrences"]:
-                if "RecordingStamp" in occurrence:
-                    recording_stamp = occurrence["RecordingStamp"]
-                    transformed_data["DocumentNumber"] = recording_stamp.get("DocumentNumber", transformed_data["DocumentNumber"])
-                    transformed_data["Book"] = recording_stamp.get("Book", transformed_data["Book"])
-                    transformed_data["Page"] = recording_stamp.get("Page", transformed_data["Page"])
-                    transformed_data["RecordingDate"] = recording_stamp.get("RecordingDate", transformed_data["RecordingDate"])
-                    transformed_data["RecordingTime"] = recording_stamp.get("RecordingTime", transformed_data["RecordingTime"])
-                    transformed_data["RecordingFee"] = recording_stamp.get("RecordingFee", transformed_data["RecordingFee"])
-                    transformed_data["CountyRecorderName"] = recording_stamp.get("CountyRecorderName", transformed_data["CountyRecorderName"])
-                    transformed_data["CountyName"] = recording_stamp.get("CountyName", transformed_data["CountyName"])
-                    transformed_data["IsDocumentRecorded"] = recording_stamp.get("IsDocumentRecorded", transformed_data["IsDocumentRecorded"])
-                
-                # Collect Context Lines
-                if "ContextLines" in occurrence:
-                    for context in occurrence["ContextLines"]:
-                        text = context.get("text", "").strip()
-                        if text:
-                            context_lines.append(text)
-        
-        # Legal and Riders Information
-        transformed_data["LegalDescriptionIncluded"] = item.get("LegalDescriptionIncluded", transformed_data["LegalDescriptionIncluded"])
-        transformed_data["LegalDescriptionNotes"] = item.get("LegalDescriptionNotes", transformed_data["LegalDescriptionNotes"])
-        transformed_data["PartiesSigned"] = item.get("PartiesSigned", transformed_data["PartiesSigned"])
-        transformed_data["PartiesSignedNotes"] = item.get("PartiesSignedNotes", transformed_data["PartiesSignedNotes"])
-        transformed_data["TrusteeNameProvided"] = item.get("TrusteeNameProvided", transformed_data["TrusteeNameProvided"])
-        transformed_data["TrusteeNameNotes"] = item.get("TrusteeNameNotes", transformed_data["TrusteeNameNotes"])
-        transformed_data["AllRidersPresent"] = item.get("AllRidersPresent", transformed_data["AllRidersPresent"])
-        transformed_data["MERSRiderPresent"] = item.get("MERSRiderPresent", transformed_data["MERSRiderPresent"])
-        transformed_data["AllRidersNotes"] = item.get("AllRidersNotes", transformed_data["AllRidersNotes"])
-        transformed_data["MERSRiderNotes"] = item.get("MERSRiderNotes", transformed_data["MERSRiderNotes"])
-        
-        # Page and Corrections Validation
-        if "PageValidation" in item:
-            transformed_data["AllPagesPresent"] = item["PageValidation"].get("AllPagesPresent", transformed_data["AllPagesPresent"])
-            transformed_data["AllPagesPresentNotes"] = item["PageValidation"].get("AllPagesPresentNotes", transformed_data["AllPagesPresentNotes"])
-        if "CorrectionsValidation" in item:
-            transformed_data["ChangesInitialed"] = item["CorrectionsValidation"].get("ChangesInitialed", transformed_data["ChangesInitialed"])
-            transformed_data["ChangesInitialedNotes"] = item["CorrectionsValidation"].get("ChangesInitialedNotes", transformed_data["ChangesInitialedNotes"])
-        
-        # Collect Context Lines if present outside Occurrences
-        # (In the provided data, ContextLines are only within Occurrences)
-        # If needed, add similar extraction here
-        
-    # Combine all Overall Validation Notes
-    transformed_data["AllValidationNotes"] = " ".join(overall_validation_notes)
 
-    # Calculate the average Confidence Score
-    if confidence_scores:
-        transformed_data["ConfidenceScore"] = round(mean(confidence_scores), 2)
+    # Process each response and map data to transformed_data
+    for response in parsed_data:
+        if 'borrower_validation' in response:
+            transformed_data['borrower_validation'] = response['borrower_validation']['outcome']
+            transformed_data['borrower_notes'] = response['borrower_validation']['notes']
+        
+        if 'note_date_validation' in response:
+            transformed_data['note_date_validation'] = response['note_date_validation']['outcome']
+            transformed_data['note_date_notes'] = response['note_date_validation']['notes']
+        
+        if 'loan_amount_validation' in response:
+            transformed_data['loan_amount_validation'] = response['loan_amount_validation']['outcome']
+            transformed_data['loan_amount_notes'] = response['loan_amount_validation']['notes']
+        
+        if 'maturity_date_validation' in response:
+            transformed_data['maturity_date_validation'] = response['maturity_date_validation']['outcome']
+            transformed_data['maturity_date_notes'] = response['maturity_date_validation']['notes']
+        
+        if 'property_address_validation' in response:
+            transformed_data['property_address_validation'] = response['property_address_validation']['outcome']
+            transformed_data['property_address_notes'] = response['property_address_validation']['notes']
+        
+        if 'min_validation' in response:
+            transformed_data['min_validation'] = response['min_validation']['outcome']
+            transformed_data['min_notes'] = response['min_validation']['notes']
 
-    # Add collected Context Lines
-    transformed_data["ContextLines"] = context_lines
+        if 'document_number' in response:
+            transformed_data['document_number'] = response['document_number']
+        
+        if 'book_volume' in response:
+            transformed_data['book_volume'] = response['book_volume']
+        
+        if 'page_number' in response:
+            transformed_data['page_number'] = response['page_number']
+        
+        if 'recording_date' in response:
+            transformed_data['recording_date'] = response['recording_date']
+        
+        if 'recording_time' in response:
+            transformed_data['recording_time'] = response['recording_time']
+        
+        if 'recording_fee' in response:
+            transformed_data['recording_fee'] = response['recording_fee']
+        
+        if 'recorder_clerk_name' in response:
+            transformed_data['recorder_clerk_name'] = response['recorder_clerk_name']
+        
+        if 'county_name' in response:
+            transformed_data['county_name'] = response['county_name']
+        
+        if 'legal_description_present' in response:
+            transformed_data['legal_description_present'] = response['legal_description_present']
+        
+        if 'legal_description_notes' in response:
+            transformed_data['legal_description_notes'] = response['legal_description_notes']
+        
+        if 'borrower_signatures_present' in response:
+            transformed_data['borrower_signatures_present'] = response['borrower_signatures_present']
+        
+        if 'borrower_signatures_notes' in response:
+            transformed_data['borrower_signatures_notes'] = response['borrower_signatures_notes']
+        
+        if 'trustee_name_present' in response:
+            transformed_data['trustee_name_present'] = response['trustee_name_present']
+        
+        if 'trustee_name_notes' in response:
+            transformed_data['trustee_name_notes'] = response['trustee_name_notes']
+        
+        if 'all_riders_present' in response:
+            transformed_data['all_riders_present'] = response['all_riders_present']
+        
+        if 'all_riders_notes' in response:
+            transformed_data['all_riders_notes'] = response['all_riders_notes']
+        
+        if 'mers_rider_present' in response:
+            transformed_data['mers_rider_present'] = response['mers_rider_present']
+        
+        if 'mers_rider_notes' in response:
+            transformed_data['mers_rider_notes'] = response['mers_rider_notes']
+        
+        if 'page_validation' in response:
+            transformed_data['page_validation'] = response['page_validation']['status']
+            transformed_data['page_validation_notes'] = response['page_validation']['details']['notes']
+        
+        if 'correction_validation' in response:
+            transformed_data['correction_validation'] = response['correction_validation']['status']
+            transformed_data['correction_validation_notes'] = response['correction_validation']['details']['notes']
 
-    # Optional: Remove None values for cleaner output
-    # transformed_data_cleaned = {k: v for k, v in transformed_data.items() if v is not None and v != ""}
+        # Set isdocumentrecorded based on the condition
+        if (response.get('recording_date') or response.get('document_number')) and response.get('book_volume') and response.get('page_number'):
+            transformed_data['isdocumentrecorded'] = True
+        else:
+            transformed_data['isdocumentrecorded'] = False
+        
+        # Collect confidence scores (ensure they are float)
+        confidence_scores.append(float(response.get('confidence_score', 0.0)))
 
-    # Output the transformed data as a JSON string with indentation for readability
-    print(json.dumps(transformed_data, indent=4))
+    # Calculate average confidence score
+    avg_confidence_score = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
+    transformed_data['confidence_score'] = avg_confidence_score
 
-    return transformed_data, transformed_data["ConfidenceScore"]
+    return transformed_data, avg_confidence_score
+
+
+
 def process_single_row(row, tracking_id):
     """
     Processes a single row: convert PDF to images, send images to GPT for multiple prompts,
@@ -466,12 +507,12 @@ def process_single_row(row, tracking_id):
         # For instance, use 'reference_prompt' as your first system message 
         # (or build a dynamic system prompt yourself).
         # Example placeholders:
-        system_messages = reference_prompt.replace('{Borrower}', borrower)\
-                                        .replace('{MIN}', str(min_number))\
-                                        .replace('{Note_Date}', note_date)\
-                                        .replace('{Maturity_Date}', maturity_date)\
-                                        .replace('{Loan_Amount}', str(loan_amount))\
-                                        .replace('{Property_Address}', property_address)
+        system_messages = reference_prompt.replace('{in_borrower}', borrower)\
+                                        .replace('{in_min}', str(min_number))\
+                                        .replace('{in_note_date}', note_date)\
+                                        .replace('{in_maturity_date}', maturity_date)\
+                                        .replace('{in_loan_amount}', str(loan_amount))\
+                                        .replace('{in_property_address}', property_address)
 
         # Start conversation with system + user (images)
         conversation = [
@@ -499,7 +540,7 @@ def process_single_row(row, tracking_id):
 
         # ------------- STEP 6: PREPARE ADDITIONAL PROMPTS -------------
         # Example: identity_stamp modifies the template with note_date
-        identity_stamp = identitystamp.replace('{SecurityInstrumentDate}', note_date)
+        identity_stamp = identitystamp.replace('{in_note_date}', note_date)
 
         # Define your additional prompts
         additional_prompts = [
@@ -519,8 +560,9 @@ def process_single_row(row, tracking_id):
             response = send_conversation_to_gpt(conversation)
             # Add assistant's response to the conversation
             conversation.append({"role": "assistant", "content": response})
+
             all_response.append(response)
-            # If this is the last prompt, parse the final JSON
+            
         final_output, overall_conf = get_output_confidence(all_response)
         # ------------- STEP 8: CLEAN UP TEMP IMAGES FOR THIS REFERENCE -------------
         cleanup_temp_images_for_reference(referencenumber)
