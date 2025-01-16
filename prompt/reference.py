@@ -19,10 +19,10 @@ INSTRUCTIONS
 ────────────────────────────────────────────────────────────────────────────
 
 1. BORROWER NAME  
-   • Compare the borrower(s) extracted from the document against the reference field “ref_borrower,” ignoring case.  
+   • Compare the reference field “ref_borrower” against any one borrower extracted from the document, ignoring case.  
    • Allow for minor variations (e.g., omitted middle names/initials, abbreviated middle names, missing “Jr.” or “Sr.”).  
    • Outcome Criteria:  
-     – "Yes" if names match (accounting for acceptable variations).  
+     – "Yes" if any one extracted borrower matches the reference (accounting for acceptable variations).  
      – "No" if mismatch (provide reason in notes: "S – {Ref}  D – {Extract}").
 
 2. NOTE DATE  
@@ -47,7 +47,8 @@ INSTRUCTIONS
 
 5. PROPERTY ADDRESS  
    • Specifically extract the property address from the paragraph citing “TRANSFER OF RIGHTS IN THE PROPERTY.”  
-   • Handle case insensitivity and common abbreviations (e.g., “St.” vs. “Street,” missing unit info, etc.).  
+   • Use common abbreviations (e.g., “St.” vs. “Street”) and convert both extracted and reference addresses to use short state names.  
+   • ignoring case sensitivity during comparison.  
    • Outcome Criteria:  
      – "Yes" if addresses match (accounting for acceptable variations).  
      – "No" if mismatch (notes: "S – {Ref}  D – {Extract}").
@@ -59,6 +60,7 @@ INSTRUCTIONS
      – If no MIN is found, "No" (notes: "MIN missing").  
      – If MIN differs from the reference, "No" (notes: "S – {Ref}  D – {Extract}").  
      – Otherwise, "Yes".
+
 
 ────────────────────────────────────────────────────────────────────────────
 RESULT FORMAT
