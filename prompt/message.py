@@ -52,7 +52,11 @@ III. DETAILED STEPS
       • Outcome = "Yes" if matched, "No" if mismatch (notes: "S – {Ref}  D – {Extract}").
 
    e) PROPERTY ADDRESS:  
-      • Compare the extracted address to "ref_property_address," ignoring case and normalizing abbreviations/ state name abbreviations (St. ↔ Street, Montana ↔ MT, Oregon ↔ OR, or Washington ↔ WA).  
+      • Perform a standardized comparison of the extracted address with the "ref_property_address" using these criteria:
+         - **House/Unit Number:** Exact match.
+         - **ZIP Code:** Match the first five digits.
+         - **Case Insensitivity:** Ignore differences in letter casing.
+         - **Abbreviation Normalization:** Standardize abbreviations for streets (e.g., "St." ↔ "Street," "Ave" ↔ "Avenue") and states (e.g., "MT" ↔ "Montana," "OR" ↔ "Oregon," "WA" ↔ "Washington").
       • Outcome = "Yes" if matched, "No" if mismatch (notes: "S – {Ref}  D – {Extract}").
 
    f) MIN (MORTGAGE IDENTIFICATION NUMBER):  
