@@ -13,7 +13,6 @@ from pdf2image import convert_from_path
 import concurrent.futures
 from prompt.identity_stamp import identitystamp
 from prompt.message import systemmessage
-from prompt.changes import changes_initialed
 from openai import OpenAI
 
 # ---------------- CONFIGURATION ----------------
@@ -85,6 +84,7 @@ def create_tables():
         minnumber VARCHAR(50),
         maturitydate VARCHAR(50),
         output TEXT,
+        response TEXT,
         overallconfidence FLOAT,
         FOREIGN KEY (tracking_id) REFERENCES tbl_excel_tracking(id)
     );
@@ -142,6 +142,7 @@ def insert_processing_result(
     minnumber: str,
     maturitydate: str,
     output: str,
+    response: str,
     overallconfidence: float
 ):
     """
@@ -161,9 +162,10 @@ def insert_processing_result(
             minnumber,
             maturitydate,
             output,
+            response,
             overallconfidence
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -180,6 +182,7 @@ def insert_processing_result(
             minnumber,
             maturitydate,
             output,
+            response,
             overallconfidence
         ))
         conn.commit()
@@ -204,37 +207,37 @@ def convert_pdf_to_images(pdf_path, referenceid, base_temp_dir=TEMP_IMAGES_DIR, 
 
         for i, image in enumerate(images):
             # Convert PIL Image to OpenCV format
-            # opencv_image = np.array(image)
+            opencv_image = np.array(image)
 
-            # # 1) Convert to grayscale
-            # gray = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2GRAY)
+            # 1) Convert to grayscale
+            gray = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2GRAY)
 
-            # # 2) Use a mild median blur to reduce salt-and-pepper noise
-            # gray = cv2.medianBlur(gray, 3)
+            # 2) Use a mild median blur to reduce salt-and-pepper noise
+            gray = cv2.medianBlur(gray, 3)
 
-            # # 3) Binarize using Otsu's Threshold
-            # _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+            # 3) Binarize using Otsu's Threshold
+            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
-            # # 4) Morphological opening to remove small black specks
-            # #    (especially helpful for scanned dot-noise artifacts)
-            # kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-            # opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_open, iterations=1)
+            # 4) Morphological opening to remove small black specks
+            #    (especially helpful for scanned dot-noise artifacts)
+            kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+            opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_open, iterations=1)
 
-            # # 5) Optionally, morphological closing can be used to fill small
-            # #    white holes within black text regions (uncomment if needed)
-            # # kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-            # # cleaned = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_close, iterations=1)
-            # # final_image = cleaned
-            # #
-            # # If you do not need closing, simply use:
-            # final_image = opened
+            # 5) Optionally, morphological closing can be used to fill small
+            #    white holes within black text regions (uncomment if needed)
+            # kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+            # cleaned = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_close, iterations=1)
+            # final_image = cleaned
+            #
+            # If you do not need closing, simply use:
+            final_image = opened
 
             # Convert back to PIL Image for saving
-            # processed_image = Image.fromarray(final_image)
+            processed_image = Image.fromarray(final_image)
 
             # Save the processed image
             image_file = os.path.join(unique_temp_dir, f"page_{i + 1}.png")
-            image.save(image_file, "PNG")
+            processed_image.save(image_file, "PNG")
             image_paths.append(image_file)
 
         return image_paths
@@ -300,7 +303,7 @@ def encode_image(image):
     image.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-def send_conversation_to_gpt(messages, _model="gpt-4o-mini"):
+def send_conversation_to_gpt(messages, _model="gpt-4o"):
     """
     Send the current conversation to GPT-4 and get the assistant's response.
     """
@@ -322,14 +325,7 @@ def send_conversation_to_gpt(messages, _model="gpt-4o-mini"):
 
 
 def get_output_confidence(all_response):
-
-    # Parse each JSON string into a Python dictionary
-    parsed_data = [json.loads(item) for item in all_response]
-
-    # Initialize variables to collect required data
-    confidence_scores = []
-
-    # Initialize the transformed data dictionary
+    parsed_data = []
     transformed_data = {
         "borrower_validation": None,
         "borrower_notes": None,
@@ -364,12 +360,24 @@ def get_output_confidence(all_response):
         "mers_rider_notes": None,
         "page_validation": None,
         "page_validation_notes": None,
-        "correction_validation": None,
-        "correction_validation_notes": None,
+        "crossed_out_validation": None,
+        "crossed_out_validation_notes": None,
         "document_type":None,
         "property_state":None,
         "confidence_score": 0.0,
     }
+    try:
+        # Parse each JSON string into a Python dictionary
+        parsed_data = [json.loads(item) for item in all_response]
+    except Exception as e:
+        print("Exception ->" , e)
+        return transformed_data, 0.0, json.dumps(all_response)
+
+    # Initialize variables to collect required data
+    confidence_scores = []
+
+    # Initialize the transformed data dictionary
+    
 
     required_keys = {"document_number", "recording_date", "book_volume", "page_number", "recording_fee"}
 
@@ -389,6 +397,8 @@ def get_output_confidence(all_response):
             transformed_data['property_address_notes'] = loan_data['property_address_validation']['notes']
             transformed_data['min_validation'] = loan_data['min_validation']['outcome']
             transformed_data['min_notes'] = loan_data['min_validation']['notes']
+            
+            confidence_scores.append(float(loan_data.get('confidence_score', 0.0)))
         
         
 
@@ -396,18 +406,25 @@ def get_output_confidence(all_response):
 
             transformed_data['document_number'] = response.get('document_number', '')
             transformed_data['book_volume'] = response.get('book_volume', '')
-            transformed_data['page_number'] = response.get('page_number', '')
             transformed_data['recording_date'] = response.get('recording_date', '')
             transformed_data['recording_time'] = response.get('recording_time', '')
             transformed_data['recording_fee'] = response.get('recording_fee', '')
             transformed_data['recorder_clerk_name'] = response.get('recorder_clerk_name', '')
             transformed_data['county_name'] = response.get('county_name', '')
 
+            if transformed_data['book_volume']:
+                transformed_data['page_number'] = response.get('page_number', '')
+            else:
+                transformed_data['page_number'] = ''
+
             if (response.get('recording_date') and response.get('document_number')) or \
             ((response.get('recording_date') or response.get('document_number')) and response.get('book_volume') and response.get('page_number')):
                 transformed_data['isdocumentrecorded'] = True
             else:
                 transformed_data['isdocumentrecorded'] = False
+            
+            if 'confidence_score' in response:
+                confidence_scores.append(float(response.get('confidence_score', 0.0)))
 
         if 'document_review' in response:
             doc_review = response['document_review']
@@ -419,31 +436,36 @@ def get_output_confidence(all_response):
             transformed_data['trustee_name_present'] = doc_review.get('trustee_name_present', 'N/A')
             transformed_data['trustee_name_notes'] = doc_review.get('trustee_name_notes', '')
             transformed_data['property_state'] = doc_review.get('property_state', '')
-        
+            confidence_scores.append(float(doc_review.get('confidence_score', 0.0)))
+
         if 'page_validation' in response:
             page_validation = response['page_validation']
             transformed_data['page_validation'] = page_validation.get('status', '')
             transformed_data['page_validation_notes'] = page_validation.get('details', {}).get('notes', '')
+            confidence_scores.append(float(page_validation.get('confidence_score', 0.0)))
 
         if 'rider_analysis' in response:
-            if response['rider_analysis']:
-                rider_analysis = [item for item in response['rider_analysis'] if 'mers' not in item['rider_name'].lower()]
+            if response['rider_analysis']['riders']:
+                rider_analysis = [item for item in response['rider_analysis']['riders'] if 'mers' not in item['rider_name'].lower()]
                 yes = [item for item in rider_analysis if 'yes' == item['status'].lower()]
                 no = [item for item in rider_analysis if 'no' == item['status'].lower()]
                 na = [item for item in rider_analysis if 'n/a' == item['status'].lower()]
-                if len(yes) + len(na) == len(rider_analysis):
-                    transformed_data['riders_present'] = 'Yes'
-                    transformed_data['riders_notes'] = ''
-                elif any(no):
+                
+                if any(no):
                     transformed_data['riders_present'] = 'No'
                     transformed_data['riders_notes'] = 'incomplete/ missing'
+                
                 elif len(na) == len(rider_analysis):
                     transformed_data['riders_present'] = 'N/A'
                     transformed_data['riders_notes'] = 'unchecked'
+                
+                elif any(yes):
+                    transformed_data['riders_present'] = 'Yes'
+                    transformed_data['riders_notes'] = ''
 
                 
                 if transformed_data['property_state'].lower() in ['montana', 'oregon', 'washington']:
-                    mers_rider_analysis = [item for item in response['rider_analysis'] if 'mers' in item['rider_name'].lower()]
+                    mers_rider_analysis = [item for item in response['rider_analysis']['riders'] if 'mers' in item['rider_name'].lower()]
                     yes = [item for item in mers_rider_analysis if 'yes' not in item['status'].lower()]
                     no = [item for item in mers_rider_analysis if 'no' not in item['status'].lower()]
                     if any(yes):
@@ -465,20 +487,42 @@ def get_output_confidence(all_response):
                 else:
                     transformed_data['mers_rider_present'] = 'No'
                     transformed_data['mers_rider_notes'] = 'incomplete/ missing'   
+            if 'confidence_score' in response['rider_analysis']:
+                confidence_scores.append(float(response['rider_analysis'].get('confidence_score', 0.0)))
 
-        if 'crossed_out_and_replacement_annotations' in response:
-            transformed_data['correction_validation'] = response['crossed_out_and_replacement_annotations']
-            transformed_data['correction_validation_notes'] = response['note']
-               
-            
-        if 'confidence_score' in response:
-            confidence_scores.append(float(response.get('confidence_score', 0.0)))
+        if 'crossed-out' in response:
+            response_data = response['crossed-out']
+          
+            yes = [item for item in response_data['results'] if 'yes' == item['crossed_out_and_replacement_annotations_with_Initials'].lower()]
+            no = [item for item in response_data['results'] if 'no' == item['crossed_out_and_replacement_annotations_with_Initials'].lower()]
+            na = [item for item in response_data['results'] if 'n/a' == item['crossed_out_and_replacement_annotations_with_Initials'].lower()]
+            if no:
+                notes = [result['note'] for result in response_data['results'] if result['crossed_out_and_replacement_annotations_with_Initials'].lower() == 'no']
+                transformed_data.update({
+                    "crossed_out_validation": "No",
+                    "crossed_out_validation_notes": ', '.join(notes),
+                })
+            elif len(na) == len(response_data['results']):
+                notes = [result['note'] for result in response_data['results']]
+                transformed_data.update({
+                    "crossed_out_validation": "N/A",
+                    "crossed_out_validation_notes": ', '.join(notes)
+                })
+            elif any(yes):
+                notes = [result['note'] for result in response_data['results'] if result['crossed_out_and_replacement_annotations_with_Initials'].lower() == 'yes' ]
+                transformed_data.update({
+                    "crossed_out_validation": "Yes",
+                    "crossed_out_validation_notes": ', '.join(notes)
+                })
+
+            # Calculate the average confidence score
+            confidence_scores.append(min(result['confidence_score'] for result in response_data['results']))
 
     # Calculate average confidence score
-    avg_confidence_score = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
-    transformed_data['confidence_score'] = avg_confidence_score
+    min_confidence_score = min(confidence_scores) if confidence_scores else 0.0
+    transformed_data['confidence_score'] = min_confidence_score
 
-    return transformed_data, avg_confidence_score
+    return transformed_data, min_confidence_score,json.dumps(parsed_data)
 
 
 def gpt_system_message(system_message,encoded_images):
@@ -498,7 +542,9 @@ def gpt_system_message(system_message,encoded_images):
             },
         ]
     _response = send_conversation_to_gpt(conversation)
-    return _response
+    if _response:
+        return _response
+    return "No valid response received"
 
 def gpt_identity_stamp(identity_stamp, encoded_images):
     if len(encoded_images) > 4:
@@ -535,27 +581,6 @@ def gpt_identity_stamp(identity_stamp, encoded_images):
                 return _response
     return "No valid response received"
 
-def gpt_crossed_Out_and_initiale(crossed_Out_and_initiale, encoded_images):
-    conversation = [
-            {"role": "system", "content": crossed_Out_and_initiale},
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}",
-                            "detail": "high"
-                        },
-                    } for base64_image in encoded_images
-                ],
-            },
-        ]
-
-    _response = send_conversation_to_gpt(conversation, _model="gpt-4o")
-    if _response:
-        return  _response 
-    return {}
 
 def process_single_row(row, tracking_id):
     """
@@ -582,7 +607,6 @@ def process_single_row(row, tracking_id):
         if not image_paths:
             print(f"No images were generated from the PDF for reference {referencenumber}.")
             return None
-        return {}
         # ------------- STEP 2: LOAD IMAGES -------------
         images = load_images_for_reference(referencenumber)
         if not images:
@@ -606,23 +630,37 @@ def process_single_row(row, tracking_id):
                                         .replace('{in_property_address}', property_address)
 
         _response = gpt_system_message(system_message,encoded_images)
-        all_response.append(_response)
+        if _response != "No valid response received":
+            all_response.append(_response)
 
         # ------------- STEP 6: PREPARE ADDITIONAL PROMPTS -------------
         # Example: identity_stamp modifies the template with note_date
         identity_stamp = identitystamp.replace('in_note_date', json.dumps({"note_date":note_date}))
         _response = gpt_identity_stamp(identity_stamp,encoded_images)
-        all_response.append(_response)
-
-        _response = gpt_crossed_Out_and_initiale(changes_initialed,encoded_images)
-        all_response.append(_response)
+        if _response != "No valid response received":
+            all_response.append(_response)
 
         # print(all_response)
-        final_output, overall_conf = get_output_confidence(all_response)
+        final_output, overall_conf,parsed_data = get_output_confidence(all_response)
 
         # # ------------- STEP 8: CLEAN UP TEMP IMAGES FOR THIS REFERENCE -------------
         cleanup_temp_images_for_reference(referencenumber)
-
+        insert_processing_result(
+            tracking_id,
+            projectid,
+            referencenumber,
+            documenttype,
+            pdf_path,
+            borrower,
+            loan_amount,
+            property_address,
+            note_date,
+            min_number,
+            maturity_date,
+            json.dumps(final_output),
+            parsed_data,
+            overall_conf
+        )
         # ------------- STEP 9: RETURN RESULTS -------------
         return {
             "tracking_id": tracking_id,
@@ -702,28 +740,11 @@ def main():
                     results.append(res)
 
         # 8) Insert results into tbl_processing_result
-        for r in results:
-            insert_processing_result(
-                tracking_id=r["tracking_id"],
-                projectid=r["projectid"],
-                referencenumber=r["referencenumber"],
-                documenttype=r["documenttype"],
-                pdf_path=r["pdf_path"],
-                borrower=r["borrower"],
-                amount=r["amount"],
-                propertyaddress=r["propertyaddress"],
-                notedate=r["notedate"],
-                minnumber=r["minnumber"],
-                maturitydate=r["maturitydate"],
-                output=json.dumps(r["output"]),
-                overallconfidence=r["overallconfidence"]
-            )
-
         # 9) Build two lists for "Auto Submit" and "Need to Review"
         auto_submit = []
         need_review = []
         for r in results:
-            if r["overallconfidence"] < 0.9:
+            if r["overallconfidence"] < 0.95:
                 need_review.append(r)
             else:
                 auto_submit.append(r)
