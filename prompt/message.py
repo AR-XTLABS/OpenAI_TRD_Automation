@@ -98,14 +98,14 @@ III. DETAILED STEPS
 
 4) RIDERS ANALYSIS  
    a) CHECKED VS. UNCHECKED  
-      • A Rider marked by ☑ or ☒ is "checked"; a Rider marked by □ is "unchecked."  
+      • A Rider marked by ☑ or ☒ is "checked"; a Rider marked by ▢, [ ] or [] is "unchecked."  
       • If checked, verify presence and required signatures.  
       • If unchecked, status = "N/A" (reason: "unchecked").
 
    b) STATUS CLASSIFICATION  
       • "Yes" if checked, attached, and fully signed.  
       • "No" if checked but missing or lacking signatures.  
-      • "N/A" if Rider is unchecked or otherwise irrelevant.
+      • "N/A" if Rider is unchecked.
 
 5) CONFIDENCE SCORING   
    • Provide an "confidence_score" (0.0–1.0) indicating total completeness and accuracy.
@@ -140,7 +140,8 @@ Produce a single JSON object with the following structure:
     "min_validation": {
       "outcome": "Yes | No | N/A",
       "notes": "<reason or empty>"
-    }
+    },
+    "confidence_score": <float between 0.0 and 1.0>
   },
   "document_review": {
     "document_type": "<Mortgage | Deed of Trust | N/A>",
@@ -150,7 +151,8 @@ Produce a single JSON object with the following structure:
     "borrower_signatures_notes": "<string or empty>",
     "trustee_name_present": "<Yes | No | N/A>",
     "trustee_name_notes": "<string or empty>",
-    "property_state":"state name"
+    "property_state":"state name",
+    "confidence_score": <float between 0.0 and 1.0>
   },
   "page_validation": {
     "status": "<Yes | No>",
@@ -165,17 +167,17 @@ Produce a single JSON object with the following structure:
         }
       ],
       "notes": "<additional explanations>"
-    }
+    },
+    "confidence_score": <float between 0.0 and 1.0>
   },
-  "rider_analysis": [
-      {
+  "rider_analysis": {
+      "riders": [{
         "rider_name": "<Name of Rider>",
         "status": "<Yes | No | N/A>",
         "reason": "<'missing'|'incomplete'|'unchecked'|''>"
-      }
-    ],
-  "confidence_score": <float between 0.0 and 1.0>
+      }],
+      "confidence_score": <float between 0.0 and 1.0>
+    }
 }
-
 ────────────────────────────────────────────────────────────────────
 """
