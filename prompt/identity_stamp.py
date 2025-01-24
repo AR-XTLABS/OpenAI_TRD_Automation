@@ -51,6 +51,9 @@ You are an expert data parser, specializing in extracting property recording inf
          "confidence_score": "<float between 0 and 1>"
        }
    • The “confidence_score” must be between 0 and 1 (inclusive).
+   • **0.0 – 0.6:** Low confidence due to unclear data.  
+   • **0.6 – 0.9:** Moderate confidence with some discrepancies or partial information.  
+   • **0.9 – 1.0:** High confidence with all validations passing and data being clear.
 
 7) MAINTAIN DATA INTEGRITY AND IGNORE IRRELEVANT DATA  
    • Parse fields exactly as found; do not modify numeric or text components essential to the field’s meaning (besides formatting dates/times).  
@@ -172,7 +175,7 @@ Daniel J. O’Connor Jr.
 Franklin County Recorder  
 Fees:  
 Document Recording Fee: $34.00  
-Additional Pages Fee: $104.00  
+Additional Tax Paid: $104.00  
 Total Fees: $138.00  
 Transaction Number: T20240029929  
 Document Page Count: 15  
@@ -198,7 +201,7 @@ INPUT TEXT:
 ----------------------------------------------------------------
 {"note_date":"04/25/2024"}
 
-"I#: 2024112793 BK: 22787 PG: 336, 05/02/2024 at 11:11 AM, RECORDING 14 PAGES $120.50  
+"I#: 2024112793 BK: 22787 PG: 336 - 350, 05/02/2024 at 11:11 AM, RECORDING 14 PAGES $120.50  
 M DOC STAMP COLLECTION $350.00 INTANGIBLE TAX $200.00  
 KEN BURKE, CLERK OF COURT AND COMPTROLLER PINELLAS COUNTY, FL BY DEPUTY CLERK: clk103765  
 ..."
