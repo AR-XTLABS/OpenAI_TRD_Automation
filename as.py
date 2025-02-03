@@ -13,8 +13,10 @@ from pdf2image import convert_from_path
 import concurrent.futures
 from prompt.identity_stamp import identitystamp
 from prompt.message import systemmessage
+from prompt.cross import cross_out
 from openai import OpenAI
-
+from ultralytics import YOLO
+from concurrent.futures import ProcessPoolExecutor
 # ---------------- CONFIGURATION ----------------
 # Replace with your actual credentials and paths
 SERVER = 'YOUR_SERVER'
@@ -188,12 +190,74 @@ def insert_processing_result(
         conn.commit()
 
 
-def convert_pdf_to_images(pdf_path, referenceid, base_temp_dir=TEMP_IMAGES_DIR, pdf_location=PDF_FOLDER):
+def preprocess_for_line_detection(image):
     """
-    Convert a PDF to images with preprocessing for better OCR accuracy.
-    Images are saved in a unique subdirectory under base_temp_dir,
-    named using 'referenceid'. Additional denoising and dot-noise
-    removal techniques are applied to improve text clarity.
+    Preprocess the image once for contour detection of text lines.
+    Returns the dilated (binary) image and the found contours.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Apply binary thresholding
+    _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
+    # Define a kernel for dilation (helps to merge text into lines)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 5))
+    # Perform dilation with fewer iterations if you want to reduce CPU further
+    dilated = cv2.dilate(binary, kernel, iterations=2)
+    # Find contours
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return contours
+
+def identify_relevant_lines(line_contours, y1, y2, num_lines=2):
+    """
+    Identify the nearest lines above y1 and below y2.
+    """
+    upper_lines = []
+    lower_lines = []
+    
+    for cnt in line_contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        # bottom of contour is y+h, top is y
+        if y + h < y1:
+            upper_lines.append(y + h)
+        elif y > y2:
+            lower_lines.append(y)
+    
+    return sorted(upper_lines)[-num_lines:], sorted(lower_lines)[:num_lines]
+
+def define_crop_region(image_shape, upper_lines, lower_lines):
+    """
+    Define the cropping region based on detected lines.
+    """
+    height = image_shape[0]
+    start_y = upper_lines[-1] if upper_lines else 0
+    end_y = lower_lines[-1] if lower_lines else height
+    return start_y, end_y
+
+def crop_and_save(image, start_y, end_y, output_path):
+    """
+    Crop the region based on detected contours and save the image.
+    """
+    cropped_img = image[start_y:end_y, :]
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    cv2.imwrite(output_path, cropped_img)
+    print(f'Cropped image saved as {output_path}')
+
+def convert_pdf_to_images(
+        pdf_path, 
+        referenceid, 
+        base_temp_dir=TEMP_IMAGES_DIR, 
+        pdf_location=PDF_FOLDER,
+        dpi=300
+    ):
+    """
+    Convert a PDF to images with preprocessing for better OCR accuracy,
+    while also optimizing to reduce CPU usage where possible.
+    
+    :param pdf_path: Path (filename) to the PDF.
+    :param referenceid: Unique reference ID for naming output directories.
+    :param base_temp_dir: Directory to store intermediate images.
+    :param pdf_location: Base directory where PDFs are stored.
+    :param dpi: DPI for pdf2image. Lowering this can reduce CPU load.
+    :return: List of processed image file paths.
     """
     # Create a subfolder for this reference ID
     unique_temp_dir = os.path.join(base_temp_dir, str(referenceid))
@@ -201,46 +265,77 @@ def convert_pdf_to_images(pdf_path, referenceid, base_temp_dir=TEMP_IMAGES_DIR, 
     os.makedirs(unique_temp_dir, exist_ok=True)
 
     try:
-        # Increase DPI for clearer images
-        images = convert_from_path(pdf_folder_path, dpi=350)
+        # Convert PDF pages to images at the specified DPI
+        images = convert_from_path(pdf_folder_path, dpi=dpi)
         image_paths = []
 
-        for i, image in enumerate(images):
-            # Convert PIL Image to OpenCV format
-            opencv_image = np.array(image)
+        for i, pil_image in enumerate(images):
+            # Convert PIL Image to OpenCV (BGR) format once
+            opencv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
+            # --- YOLO DETECTION (Ideally GPU-based to lighten CPU load) ---
+            # Run model prediction (inference)
+            # If you have a GPU, make sure your model is set to device='cuda'
+            results = model.predict(source=opencv_image, stream=True)
+
+            # --- LINE DETECTION PREPROCESS (only once per page) ---
+            # line_contours = preprocess_for_line_detection(opencv_image)
+
+            # We’ll collect bounding-box-based crops here
+            # j = 0
+            for result in results:
+                boxes = result.boxes.xyxy.cpu().numpy()  # (x1, y1, x2, y2)
+                scores = result.boxes.conf.cpu().numpy()
+                classes = result.boxes.cls.cpu().numpy()
+
+                # Process each detection
+                for box, score, cls in zip(boxes, scores, classes):
+                    
+                        formatted_score = f"{score:.2f}"
+                        # Example: If class = 0 is "text line" or something similar
+                        
+                        label = f'{referenceid}_{LOCAL_PDF_FOLDER[int(cls)].replace("_"," ")} {formatted_score}'
+                        print(label)
+                        # Find nearest lines above/below
+                        # upper_lines, lower_lines = identify_relevant_lines(line_contours, y1, y2, num_lines=2)
+                        # _opencv_image = opencv_image.copy()
+                        # start_y, end_y = define_crop_region(_opencv_image.shape, upper_lines, lower_lines)
+                        
+                        # Crop and save
+                        output_path = f'{unique_temp_dir}/cross/{label}_{i}.png'
+                            # crop_and_save(_opencv_image, start_y, end_y, output_path)
+                            # j += 1
+                        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                        cv2.imwrite(output_path, opencv_image)
+            # --- FINAL IMAGE PROCESSING FOR OCR ---
             # 1) Convert to grayscale
-            gray = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2GRAY)
+            gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
 
-            # 2) Use a mild median blur to reduce salt-and-pepper noise
+            # 2) Mild median blur to reduce salt-and-pepper noise
             gray = cv2.medianBlur(gray, 3)
 
-            # 3) Binarize using Otsu's Threshold
+            # 3) Binarize (Otsu's threshold)
             _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
             # 4) Morphological opening to remove small black specks
-            #    (especially helpful for scanned dot-noise artifacts)
             kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
             opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_open, iterations=1)
 
-            # 5) Optionally, morphological closing can be used to fill small
-            #    white holes within black text regions (uncomment if needed)
+            # If needed, morphological closing can be done here:
             # kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-            # cleaned = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_close, iterations=1)
-            # final_image = cleaned
-            #
-            # If you do not need closing, simply use:
+            # final_image = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_close, iterations=1)
+            # Otherwise:
             final_image = opened
 
-            # Convert back to PIL Image for saving
+            # Convert back to PIL and save
             processed_image = Image.fromarray(final_image)
-
-            # Save the processed image
             image_file = os.path.join(unique_temp_dir, f"page_{i + 1}.png")
             processed_image.save(image_file, "PNG")
+            del opencv_image  # Release memory
             image_paths.append(image_file)
 
         return image_paths
+
     except Exception as e:
         print(f"Error converting PDF to images for reference {referenceid}: {e}")
         return []
@@ -252,19 +347,24 @@ def load_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR):
     and sorts them numerically.
     """
     ref_folder = os.path.join(base_temp_dir, str(referenceid))
+    cross_folder = os.path.join(base_temp_dir, str(referenceid),'cross')
     images = []
+    cross_images = []
     if not os.path.exists(ref_folder):
         print(f"No folder found for reference {referenceid}.")
-        return images
+        return images,cross_images
     
     image_files = [f for f in os.listdir(ref_folder) if f.lower().endswith('.png')]
     if not image_files:
         print(f"No PNG images found in folder {ref_folder}.")
-        return images
-
+        return images,cross_images
+    cross_files = []
+    if os.path.isdir(cross_folder):
+        cross_files = [f for f in os.listdir(cross_folder) if f.lower().endswith('.png')]
+        cross_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
     # Sort files by the numeric value extracted from the filenames
     image_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
-
+    
     # Load and rename images
     for i, filename in enumerate(image_files):
         file_path = os.path.join(ref_folder, filename)
@@ -273,8 +373,15 @@ def load_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR):
             images.append(img)
         except Exception as e:
             print(f"Error loading image {file_path}: {e}")
+    for i, filename in enumerate(cross_files):
+        file_path = os.path.join(cross_folder, filename)
+        try:
+            img = Image.open(file_path)
+            cross_images.append(img)
+        except Exception as e:
+            print(f"Error loading image {file_path}: {e}")
     
-    return images
+    return images,cross_images
 
 
 def cleanup_temp_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR):
@@ -295,13 +402,13 @@ def cleanup_temp_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR
     except Exception as e:
         print(f"Error while cleaning up temporary files for reference: {e}")
 
-def encode_image(image):
+def encode_image(image_path):
     """
-    Convert a PIL image to a base64-encoded string.
+    Convert an image file to a base64-encoded string.
     """
-    buffered = io.BytesIO()
-    image.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
+
 
 def send_conversation_to_gpt(messages, _model="gpt-4o"):
     """
@@ -446,7 +553,7 @@ def get_output_confidence(all_response):
 
         if 'rider_analysis' in response:
             if response['rider_analysis']['riders']:
-                rider_analysis = [item for item in response['rider_analysis']['riders'] if 'mers' not in item['rider_name'].lower()]
+                rider_analysis = [item for item in response['rider_analysis']['riders'] if 'mers' not in item['rider_name'].lower() and 'exhibit' not in item['rider_name'].lower()]
                 yes = [item for item in rider_analysis if 'yes' == item['status'].lower()]
                 no = [item for item in rider_analysis if 'no' == item['status'].lower()]
                 na = [item for item in rider_analysis if 'n/a' == item['status'].lower()]
@@ -462,6 +569,9 @@ def get_output_confidence(all_response):
                 elif any(yes):
                     transformed_data['riders_present'] = 'Yes'
                     transformed_data['riders_notes'] = ''
+                else:
+                    transformed_data['riders_present'] = 'N/A'
+                    transformed_data['riders_notes'] = 'unchecked'
 
                 
                 if transformed_data['property_state'].lower() in ['montana', 'oregon', 'washington']:
@@ -493,30 +603,30 @@ def get_output_confidence(all_response):
         if 'crossed-out' in response:
             response_data = response['crossed-out']
           
-            yes = [item for item in response_data['results'] if 'yes' == item['crossed_out_and_replacement_annotations_with_Initials'].lower()]
-            no = [item for item in response_data['results'] if 'no' == item['crossed_out_and_replacement_annotations_with_Initials'].lower()]
-            na = [item for item in response_data['results'] if 'n/a' == item['crossed_out_and_replacement_annotations_with_Initials'].lower()]
+            yes = [item for item in response_data if 'yes' == item['result'].lower()]
+            no = [item for item in response_data if 'no' == item['result'].lower()]
+            na = [item for item in response_data if 'n/a' == item['result'].lower()]
             if no:
-                notes = [result['note'] for result in response_data['results'] if result['crossed_out_and_replacement_annotations_with_Initials'].lower() == 'no']
+                notes = [result['note'] for result in response_data if result['result'].lower() == 'no']
                 transformed_data.update({
                     "crossed_out_validation": "No",
                     "crossed_out_validation_notes": ', '.join(notes),
                 })
-            elif len(na) == len(response_data['results']):
-                notes = [result['note'] for result in response_data['results']]
+            elif len(na) == len(response_data):
+                notes = [result['note'] for result in response_data]
                 transformed_data.update({
                     "crossed_out_validation": "N/A",
                     "crossed_out_validation_notes": ', '.join(notes)
                 })
             elif any(yes):
-                notes = [result['note'] for result in response_data['results'] if result['crossed_out_and_replacement_annotations_with_Initials'].lower() == 'yes' ]
+                notes = [result['note'] for result in response_data if result['result'].lower() == 'yes' ]
                 transformed_data.update({
                     "crossed_out_validation": "Yes",
                     "crossed_out_validation_notes": ', '.join(notes)
                 })
 
             # Calculate the average confidence score
-            confidence_scores.append(min(result['confidence_score'] for result in response_data['results']))
+            confidence_scores.append(min(float(result['confidence_score']) for result in response_data))
 
     # Calculate average confidence score
     min_confidence_score = min(confidence_scores) if confidence_scores else 0.0
@@ -608,20 +718,37 @@ def process_single_row(row, tracking_id):
             print(f"No images were generated from the PDF for reference {referencenumber}.")
             return None
         # ------------- STEP 2: LOAD IMAGES -------------
-        images = load_images_for_reference(referencenumber)
+        images,cross_images = load_images_for_reference(referencenumber)
         if not images:
             print(f"No images found in the subfolder for reference {referencenumber}.")
             return None
 
         # ------------- STEP 3: ENCODE IMAGES -------------
         encoded_images = [encode_image(img) for img in images]
-
+        all_response = []
+        print(f'reference number --> {referencenumber}')
+        if cross_images:
+            cross_encoded_images = [encode_image(img) for img in cross_images]
+            _response = gpt_system_message(cross_out,cross_encoded_images)
+            if _response != "No valid response received":
+                all_response.append(_response)
+        else:
+            all_response.append(json.dumps({
+                                "crossed-out": [
+                                {
+                                    "image_number": "",
+                                    "result": "N/A",
+                                    "confidence_score": "1.0",
+                                    "note": "No Cross-out text"
+                                }
+                                ]
+                            }))
         # ------------- STEP 4: BUILD INITIAL CONVERSATION -------------
         # For instance, use 'reference_prompt' as your first system message 
         # (or build a dynamic system prompt yourself).
         # Example placeholders:
-        print(f'reference number --> {referencenumber}')
-        all_response = []
+        
+        
         system_message = systemmessage.replace('{in_borrower}', borrower)\
                                         .replace('{in_min}', str(min_number))\
                                         .replace('{in_note_date}', note_date)\
@@ -681,7 +808,14 @@ def process_single_row(row, tracking_id):
     except Exception as e:
         print(f"Error processing row for reference {row.get('referencenumber', 'N/A')}: {e}")
         return None
+def process_row_with_tracking(args):
+    row, tracking_id = args
+    return process_single_row(row, tracking_id)
 
+def process_rows_in_parallel(rows, tracking_id):
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        return list(executor.map(process_row_with_tracking, [(row, tracking_id) for row in rows]))
+    
 def main():
     # 1) Ensure tables exist
     create_tables()
@@ -731,13 +865,7 @@ def main():
         row_dicts = df.to_dict(orient="records")
 
         # 7) Process rows in parallel (thread pool)
-        results = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            future_to_row = {executor.submit(process_single_row, row, tracking_id): row for row in row_dicts}
-            for future in concurrent.futures.as_completed(future_to_row):
-                res = future.result()
-                if res is not None:
-                    results.append(res)
+        results = process_rows_in_parallel(row_dicts, tracking_id)
 
         # 8) Insert results into tbl_processing_result
         # 9) Build two lists for "Auto Submit" and "Need to Review"

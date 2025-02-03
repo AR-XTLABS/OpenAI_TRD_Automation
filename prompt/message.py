@@ -26,9 +26,8 @@ You are an advanced AI solution tasked with performing a comprehensive review of
 2. Reviewing the document’s legal sections (document type, legal description, borrower signatures, trustee name if applicable, property state).  
 3. Analyzing page integrity (total pages, excluding non-core pages, removing duplicates, and verifying correct sequence).  
 4. Reviewing Riders (identifying whether each Rider is checked, present, signed, and complete).  
-5. Locate Crossed-Out Text and Replacement Annotations:  
-6. Generating consistent confidence scores for each stage and an overall confidence rating.  
-7. Producing a single, structured JSON output that consolidates all findings.
+5. Generating consistent confidence scores for each stage and an overall confidence rating.  
+6. Producing a single, structured JSON output that consolidates all findings.
 
 ────────────────────────────────────────────────────────────────────
 III. DETAILED STEPS
@@ -112,30 +111,7 @@ III. DETAILED STEPS
       • "No" if checked but missing or lacking signatures.  
       • "N/A" if Rider is unchecked.
 
-5) CROSSED-OUT ANALYSIS  
-   a) **Determine the Total Page Count**  
-      - Inspect the document for any statements such as “This Mortgage contains X pages” or footers like “Page X of Y.”  
-      - Use the highest *consistent* value of “Y” to establish the total page count (`total_pages`).
-
-   b) **Identify Core vs. Non-Core Pages**  
-      - Exclude any Riders, Exhibits, or Attachments from the main page count.  
-      - Only analyze and return results for the **core content** pages (the primary text of the security instrument).  
-      - Let `core_pages` be the count of these pages.
-
-   c) **Locate Crossed-Out Text and Replacement Annotations**  
-      - Detect crossed-out text using strikethrough formatting, blacklining, or specific Unicode characters. Replacement annotations could be in adjacent text boxes.  
-      - Replacement text should appear within three lines above or below the crossed-out text to be considered accompanying. 
-      - Ignore simple underlines or highlight marks; these do not constitute a Crossed-Out.
-
-   d) **Determine if Crossed-Out Text is Accompanied by Initials**  
-      - If you find text that has been crossed out and replaced and is **also initialed** near by, above, or below, record `"Yes"`.  
-      - If crossed-out text and replacement annotations are **not** initialed, record `"No"`.  
-      - If **no crossed-out text** appears on the page, record `"N/A"`. 
-
-   e) **Summary Note**  
-      - Provide a brief explanation (`note`) justifying your determination on each page (e.g., “No visible Crossed-Out were found on this page,” or “Text is crossed out without initials in the margin.”).
-
-6) CONFIDENCE SCORING   
+5) CONFIDENCE SCORING   
    • Provide an "confidence_score" (0.0–1.0) indicating total completeness and accuracy.  
    • **0.0 – 0.6:** Low confidence due to unclear data.  
    • **0.6 – 0.9:** Moderate confidence with some discrepancies or partial information.  
@@ -209,19 +185,7 @@ Produce a single JSON object with the following structure:
         "reason": "<'missing'|'incomplete'|'unchecked'|''>"
       }],
       "confidence_score": <float between 0.0 and 1.0>
-    },
-    "crossed-out": {
-         "total_pages": "<int>",
-         "core_pages": "<int>",
-         "results": [
-           {
-             "page_number": "<int index of core page>",
-             "crossed_out_and_replacement_annotations_with_Initials": "<Yes | No | N/A>",
-             "confidence_score": "<float between 0.0 and 1.0>",
-             "note": "<brief justification>"
-           }
-         ]
-       }
+    }
 }
 ────────────────────────────────────────────────────────────────────
 """

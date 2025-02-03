@@ -5,3 +5,4 @@ pillow
 pyodbc
 pandas
 openpyxl
+ultralytics
