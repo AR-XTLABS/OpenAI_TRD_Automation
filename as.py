@@ -30,8 +30,12 @@ os.environ["OPENAI_API_KEY"] = "YOUR_OPENAI_API_KEY_HERE"
 INPUT_FOLDER = "input_excel"       # Folder where .xls or .xlsx files are read
 OUTPUT_FOLDER = "outputs"          # Folder to store final output Excel
 TEMP_IMAGES_DIR = "temp_images"    # Base directory for storing reference subfolders
-PDF_FOLDER = ""
-MAX_WORKERS = 5                    # Number of parallel threads (rows processed in parallel)
+PDF_FOLDER = r"C:\Users\sriram.bhavadish\Downloads\Input_pdfs_FTP"
+MAX_WORKERS = 1  # Number of parallel threads (rows processed in parallel)
+MODEL_PATH = r"C:\Users\sriram.bhavadish\Downloads\cross_out\cross_out\weights\best.pt"
+LOCAL_PDF_FOLDER = ['cross_out','initial']
+
+model = YOLO(MODEL_PATH) 
 # ------------------------------------------------
 
 def get_connection():
@@ -189,58 +193,6 @@ def insert_processing_result(
         ))
         conn.commit()
 
-
-def preprocess_for_line_detection(image):
-    """
-    Preprocess the image once for contour detection of text lines.
-    Returns the dilated (binary) image and the found contours.
-    """
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Apply binary thresholding
-    _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
-    # Define a kernel for dilation (helps to merge text into lines)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 5))
-    # Perform dilation with fewer iterations if you want to reduce CPU further
-    dilated = cv2.dilate(binary, kernel, iterations=2)
-    # Find contours
-    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    return contours
-
-def identify_relevant_lines(line_contours, y1, y2, num_lines=2):
-    """
-    Identify the nearest lines above y1 and below y2.
-    """
-    upper_lines = []
-    lower_lines = []
-    
-    for cnt in line_contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        # bottom of contour is y+h, top is y
-        if y + h < y1:
-            upper_lines.append(y + h)
-        elif y > y2:
-            lower_lines.append(y)
-    
-    return sorted(upper_lines)[-num_lines:], sorted(lower_lines)[:num_lines]
-
-def define_crop_region(image_shape, upper_lines, lower_lines):
-    """
-    Define the cropping region based on detected lines.
-    """
-    height = image_shape[0]
-    start_y = upper_lines[-1] if upper_lines else 0
-    end_y = lower_lines[-1] if lower_lines else height
-    return start_y, end_y
-
-def crop_and_save(image, start_y, end_y, output_path):
-    """
-    Crop the region based on detected contours and save the image.
-    """
-    cropped_img = image[start_y:end_y, :]
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    cv2.imwrite(output_path, cropped_img)
-    print(f'Cropped image saved as {output_path}')
-
 def convert_pdf_to_images(
         pdf_path, 
         referenceid, 
@@ -270,19 +222,7 @@ def convert_pdf_to_images(
         image_paths = []
 
         for i, pil_image in enumerate(images):
-            # Convert PIL Image to OpenCV (BGR) format once
-            opencv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-
-            # --- YOLO DETECTION (Ideally GPU-based to lighten CPU load) ---
-            # Run model prediction (inference)
-            # If you have a GPU, make sure your model is set to device='cuda'
-            results = model.predict(source=opencv_image, stream=True)
-
-            # --- LINE DETECTION PREPROCESS (only once per page) ---
-            # line_contours = preprocess_for_line_detection(opencv_image)
-
-            # We’ll collect bounding-box-based crops here
-            # j = 0
+            results = model.predict(source=pil_image, stream=True)
             for result in results:
                 boxes = result.boxes.xyxy.cpu().numpy()  # (x1, y1, x2, y2)
                 scores = result.boxes.conf.cpu().numpy()
@@ -290,48 +230,20 @@ def convert_pdf_to_images(
 
                 # Process each detection
                 for box, score, cls in zip(boxes, scores, classes):
-                    
+                    if int(cls) == 0:
                         formatted_score = f"{score:.2f}"
                         # Example: If class = 0 is "text line" or something similar
                         
-                        label = f'{referenceid}_{LOCAL_PDF_FOLDER[int(cls)].replace("_"," ")} {formatted_score}'
+                        label = f'{referenceid} {LOCAL_PDF_FOLDER[int(cls)].replace("_"," ")} {formatted_score}'
                         print(label)
-                        # Find nearest lines above/below
-                        # upper_lines, lower_lines = identify_relevant_lines(line_contours, y1, y2, num_lines=2)
-                        # _opencv_image = opencv_image.copy()
-                        # start_y, end_y = define_crop_region(_opencv_image.shape, upper_lines, lower_lines)
                         
                         # Crop and save
                         output_path = f'{unique_temp_dir}/cross/{label}_{i}.png'
-                            # crop_and_save(_opencv_image, start_y, end_y, output_path)
-                            # j += 1
                         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                        cv2.imwrite(output_path, opencv_image)
-            # --- FINAL IMAGE PROCESSING FOR OCR ---
-            # 1) Convert to grayscale
-            gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-
-            # 2) Mild median blur to reduce salt-and-pepper noise
-            gray = cv2.medianBlur(gray, 3)
-
-            # 3) Binarize (Otsu's threshold)
-            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-
-            # 4) Morphological opening to remove small black specks
-            kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-            opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_open, iterations=1)
-
-            # If needed, morphological closing can be done here:
-            # kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-            # final_image = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel_close, iterations=1)
-            # Otherwise:
-            final_image = opened
-
-            # Convert back to PIL and save
-            processed_image = Image.fromarray(final_image)
+                        pil_image.save(output_path, "PNG")
+          
             image_file = os.path.join(unique_temp_dir, f"page_{i + 1}.png")
-            processed_image.save(image_file, "PNG")
-            del opencv_image  # Release memory
+            pil_image.save(image_file, "PNG")
             image_paths.append(image_file)
 
         return image_paths
@@ -346,42 +258,50 @@ def load_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR):
     with the format 'page_{i + 1}.png' where i is the index of the image,
     and sorts them numerically.
     """
-    ref_folder = os.path.join(base_temp_dir, str(referenceid))
-    cross_folder = os.path.join(base_temp_dir, str(referenceid),'cross')
-    images = []
+    ref_folder = os.path.join(base_temp_dir, str(referenceid))  # Main folder
+    cross_folder = os.path.join(ref_folder, 'cross')  # Crossed-out images folder
+
+    images = []  
     cross_images = []
+
+    # Check if reference folder exists
     if not os.path.exists(ref_folder):
         print(f"No folder found for reference {referenceid}.")
-        return images,cross_images
-    
+        return images, cross_images  # Return empty lists
+
+    # Load all PNG images from the main reference folder
     image_files = [f for f in os.listdir(ref_folder) if f.lower().endswith('.png')]
     if not image_files:
         print(f"No PNG images found in folder {ref_folder}.")
-        return images,cross_images
+        return images, cross_images  
+
+    # Load crossed-out images if the cross folder exists
     cross_files = []
     if os.path.isdir(cross_folder):
         cross_files = [f for f in os.listdir(cross_folder) if f.lower().endswith('.png')]
-        cross_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
-    # Sort files by the numeric value extracted from the filenames
+        cross_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))  # Sort numerically
+
+    # Sort main images numerically
     image_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
-    
-    # Load and rename images
-    for i, filename in enumerate(image_files):
+
+    # Load and append images
+    for filename in image_files:
         file_path = os.path.join(ref_folder, filename)
         try:
             img = Image.open(file_path)
-            images.append(img)
+            images.append(img)  # Append the PIL Image object
         except Exception as e:
             print(f"Error loading image {file_path}: {e}")
-    for i, filename in enumerate(cross_files):
+
+    for filename in cross_files:
         file_path = os.path.join(cross_folder, filename)
         try:
             img = Image.open(file_path)
-            cross_images.append(img)
+            cross_images.append(img)  # Append the PIL Image object
         except Exception as e:
             print(f"Error loading image {file_path}: {e}")
-    
-    return images,cross_images
+
+    return images, cross_images  # Return lists of PIL Image objects
 
 
 def cleanup_temp_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR):
@@ -402,12 +322,13 @@ def cleanup_temp_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR
     except Exception as e:
         print(f"Error while cleaning up temporary files for reference: {e}")
 
-def encode_image(image_path):
+def encode_image(image):
     """
     Convert an image file to a base64-encoded string.
     """
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")  # Save the image in memory as PNG
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 
 def send_conversation_to_gpt(messages, _model="gpt-4o"):
@@ -612,6 +533,7 @@ def get_output_confidence(all_response):
                     "crossed_out_validation": "No",
                     "crossed_out_validation_notes": ', '.join(notes),
                 })
+                confidence_scores.append(0.81)
             elif len(na) == len(response_data):
                 notes = [result['note'] for result in response_data]
                 transformed_data.update({
@@ -624,6 +546,7 @@ def get_output_confidence(all_response):
                     "crossed_out_validation": "Yes",
                     "crossed_out_validation_notes": ', '.join(notes)
                 })
+                confidence_scores.append(0.82)
 
             # Calculate the average confidence score
             confidence_scores.append(min(float(result['confidence_score']) for result in response_data))
@@ -872,10 +795,13 @@ def main():
         auto_submit = []
         need_review = []
         for r in results:
-            if r["overallconfidence"] < 0.95:
-                need_review.append(r)
-            else:
-                auto_submit.append(r)
+            try:
+                if r["overallconfidence"] < 0.95:
+                    need_review.append(r)
+                else:
+                    auto_submit.append(r)
+            except Exception as e:
+                print(e)
 
         # 10) Create DataFrames
         df_auto = pd.DataFrame(auto_submit)

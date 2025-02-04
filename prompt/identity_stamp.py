@@ -256,7 +256,31 @@ PARSED JSON OUTPUT (with confidence_score):
   "confidence_score": "0.99"
 }
 ----------------------------------------------------------------
+EXAMPLE 7  
+INPUT TEXT:
+----------------------------------------------------------------
+{"note_date":"04/02/2024"}
 
+"Instr: 202404020002731 4/2/2024
+P: 1 of 15      F:$138.00 : 1:06 PM
+Mona $ Losh T20240002397
+Allen County v:2024 P:02731"
+----------------------------------------------------------------
+
+PARSED JSON OUTPUT (with confidence_score):
+----------------------------------------------------------------
+{
+  "document_number": "202404020002731",
+  "recording_date": "04/02/2024",
+  "recording_time": "01:06 PM",
+  "county_name": "Allen County",
+  "recorder_clerk_name": "Mona Losh",
+  "book_volume": "2024",
+  "page_number": "02731",
+  "recording_fee": "138.00",
+  "confidence_score": "0.99"
+}
+----------------------------------------------------------------
 """
 
 
