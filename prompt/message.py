@@ -116,7 +116,7 @@ III. DETAILED STEPS
    • **0.0 – 0.6:** Low confidence due to unclear data.  
    • **0.6 – 0.9:** Moderate confidence with some discrepancies or partial information.  
    • **0.9 – 1.0:** High confidence with all validations passing and data being clear.
-
+   • If there’s any **noise present** in the scanned image, reduce the confidence score to below 0.9.
 
 ────────────────────────────────────────────────────────────────────
 IV. FINAL OUTPUT (JSON FORMAT)

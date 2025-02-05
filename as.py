@@ -17,6 +17,8 @@ from prompt.cross import cross_out
 from openai import OpenAI
 from ultralytics import YOLO
 from concurrent.futures import ProcessPoolExecutor
+from ocr import call_vision
+
 # ---------------- CONFIGURATION ----------------
 # Replace with your actual credentials and paths
 SERVER = 'YOUR_SERVER'
@@ -38,18 +40,66 @@ LOCAL_PDF_FOLDER = ['cross_out','initial']
 model = YOLO(MODEL_PATH) 
 # ------------------------------------------------
 
+class DatabaseConnection:
+    """
+    A Singleton class to manage a single pyODBC connection.
+    """
+    _instance = None
+    _connection = None
+
+    def __new__(cls, server, database, user, password, driver='SQL Server'):
+        """
+        If no instance exists, create one; otherwise, return the existing instance.
+        """
+        if cls._instance is None:
+            cls._instance = super(DatabaseConnection, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, server, database, user, password, driver='SQL Server'):
+        """
+        Initializes the connection only if it hasn't been initialized yet.
+        """
+        if DatabaseConnection._connection is None:
+            connection_string = (
+                f"DRIVER={{{driver}}};"
+                f"SERVER={server};"
+                f"DATABASE={database};"
+                f"UID={user};"
+                f"PWD={password}"
+            )
+            try:
+                DatabaseConnection._connection = pyodbc.connect(connection_string)
+            except pyodbc.Error as e:
+                print(f"Failed to connect: {e}")
+                DatabaseConnection._connection = None
+
+    def get_connection(self):
+        """
+        Returns the single pyODBC connection. If the connection failed or closed,
+        you may need logic to re-establish it.
+        """
+        return self._connection
+
 def get_connection():
     """
-    Returns a pyodbc connection to SQL Server.
+    Returns the singleton database connection.
     """
-    connection_string = (
-        f'DRIVER={{SQL Server}};'
-        f'SERVER={SERVER};'
-        f'DATABASE={DATABASE};'
-        f'UID={USERNAME};'
-        f'PWD={PASSWORD}'
+    # In your real code, SERVER, DATABASE, USERNAME, PASSWORD should be actual variables or settings
+    # you import from a config. For example:
+    # SERVER = "server_name"
+    # DATABASE = "database_name"
+    # USERNAME = "username"
+    # PASSWORD = "password"
+
+    db_singleton = DatabaseConnection(
+        server=SERVER,
+        database=DATABASE,
+        user=USERNAME,
+        password=PASSWORD,
+        driver='SQL Server'  # or the driver you use, e.g. 'ODBC Driver 17 for SQL Server'
     )
-    return pyodbc.connect(connection_string)
+    return db_singleton.get_connection()
+
 
 def create_tables():
     """
@@ -101,6 +151,7 @@ def create_tables():
         cursor.execute(create_tracking_table)
         cursor.execute(create_processing_table)
         conn.commit()
+        
 
 def insert_excel_tracking_record(file_name: str) -> int:
     """
@@ -117,6 +168,7 @@ def insert_excel_tracking_record(file_name: str) -> int:
         cursor.execute(query, (file_name,))
         new_id = cursor.fetchone()[0]
         conn.commit()
+        
     print(f"Inserted '{file_name}' into tbl_excel_tracking with ID = {new_id}")
     return new_id
 
@@ -133,6 +185,7 @@ def update_tracking_isread(tracking_id: int):
         cursor = conn.cursor()
         cursor.execute(query, (tracking_id,))
         conn.commit()
+        
     print(f"Updated tbl_excel_tracking.isread = 1 for ID = {tracking_id}")
 
 def insert_processing_result(
@@ -192,6 +245,7 @@ def insert_processing_result(
             overallconfidence
         ))
         conn.commit()
+        
 
 def convert_pdf_to_images(
         pdf_path, 
@@ -288,16 +342,22 @@ def load_images_for_reference(referenceid, base_temp_dir=TEMP_IMAGES_DIR):
     for filename in image_files:
         file_path = os.path.join(ref_folder, filename)
         try:
-            img = Image.open(file_path)
-            images.append(img)  # Append the PIL Image object
+            # img = Image.open(file_path)
+            with open(file_path, "rb") as f:
+                # Read the file content
+                file_content = f.read()
+            images.append(file_content)  
         except Exception as e:
             print(f"Error loading image {file_path}: {e}")
 
     for filename in cross_files:
         file_path = os.path.join(cross_folder, filename)
         try:
-            img = Image.open(file_path)
-            cross_images.append(img)  # Append the PIL Image object
+            # img = Image.open(file_path)
+            with open(file_path, "rb") as f:
+                # Read the file content
+                file_content = f.read()
+            cross_images.append(file_content)  
         except Exception as e:
             print(f"Error loading image {file_path}: {e}")
 
@@ -326,9 +386,8 @@ def encode_image(image):
     """
     Convert an image file to a base64-encoded string.
     """
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")  # Save the image in memory as PNG
-    return base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    return base64.b64encode(image).decode('utf-8')
 
 
 def send_conversation_to_gpt(messages, _model="gpt-4o"):
@@ -547,9 +606,15 @@ def get_output_confidence(all_response):
                     "crossed_out_validation_notes": ', '.join(notes)
                 })
                 confidence_scores.append(0.82)
-
+            else:
+                transformed_data.update({
+                    "crossed_out_validation": "N/A",
+                    "crossed_out_validation_notes": 'No crossed-out text detected.'
+                })
+                confidence_scores.append(0.85)
             # Calculate the average confidence score
             confidence_scores.append(min(float(result['confidence_score']) for result in response_data))
+        
 
     # Calculate average confidence score
     min_confidence_score = min(confidence_scores) if confidence_scores else 0.0
@@ -579,29 +644,36 @@ def gpt_system_message(system_message,encoded_images):
         return _response
     return "No valid response received"
 
-def gpt_identity_stamp(identity_stamp, encoded_images):
-    if len(encoded_images) > 4:
-        first_two = encoded_images[:2]  # First 2 elements
-        last_two = encoded_images[-2:]  # Last 2 elements
-        middle = encoded_images[2:-2]  # Middle elements
+def gpt_identity_stamp(identity_stamp, images):
+    if len(images) > 4:
+        first_two = images[:2]  # First 2 elements
+        last_two = images[-2:]  # Last 2 elements
+        middle = images[2:-2]  # Middle elements
 
         # Concatenate first two, reimaged middle, and last two
         _encoded_images =  first_two + last_two + middle 
 
-    for base64_image in _encoded_images:
+    for content in _encoded_images:
+        text = call_vision(content)
         conversation = [
             {"role": "system", "content": identity_stamp},
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}",
-                            "detail": "high"
-                        },
-                    }
-                ],
+                # "content": [
+                #     {
+                #         "type": "image_url",
+                #         "image_url": {
+                #             "url": f"data:image/png;base64,{base64_image}",
+                #             "detail": "high"
+                #         },
+                #     }
+                # ],
+                 "content": [
+                                {
+                                "type": "text",
+                                "text": text
+                                }
+                            ]
             },
         ]
         _response = send_conversation_to_gpt(conversation, _model="gpt-4o")
@@ -655,6 +727,15 @@ def process_single_row(row, tracking_id):
             _response = gpt_system_message(cross_out,cross_encoded_images)
             if _response != "No valid response received":
                 all_response.append(_response)
+            else:
+                all_response.append(json.dumps(
+                    {"crossed-out": [{
+                        "image_number": 0,
+                        "result": "N/A",
+                        "confidence_score": "0.85",
+                        "note": "No crossed-out text detected."
+                        }]
+                    }))
         else:
             all_response.append(json.dumps({
                                 "crossed-out": [
@@ -686,7 +767,7 @@ def process_single_row(row, tracking_id):
         # ------------- STEP 6: PREPARE ADDITIONAL PROMPTS -------------
         # Example: identity_stamp modifies the template with note_date
         identity_stamp = identitystamp.replace('in_note_date', json.dumps({"note_date":note_date}))
-        _response = gpt_identity_stamp(identity_stamp,encoded_images)
+        _response = gpt_identity_stamp(identity_stamp,images)
         if _response != "No valid response received":
             all_response.append(_response)
 
@@ -749,6 +830,7 @@ def main():
             cursor = conn.cursor()
             cursor.execute("SELECT excel_name FROM tbl_excel_tracking")
             tracked_files = [row.excel_name for row in cursor.fetchall()]
+            
         print(f"Tracked Excel files: {tracked_files}")
     except Exception as e:
         print(f"Error fetching tracked Excel files: {e}")
